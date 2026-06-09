@@ -88,11 +88,11 @@ def predict_with_tta(model, img_tensor, device):
 
 def scan_cameras(max_to_try=3):
     """
-    扫描系统中可用的摄像头索引 (使用 DSHOW 避免 Windows 下的连接延迟)
+    扫描系统中可用的摄像头索引
     """
     available = []
     for i in range(max_to_try):
-        cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(i)
         if cap.isOpened():
             ret, frame = cap.read()
             if ret:
@@ -186,8 +186,8 @@ def main():
     cam_list_idx = 0
     current_cam = available_cams[cam_list_idx]
     
-    # 使用 DSHOW 启动快速连接
-    cap = cv2.VideoCapture(current_cam, cv2.CAP_DSHOW)
+    # 启动默认摄像头后端
+    cap = cv2.VideoCapture(current_cam)
     box_size = 350
     final_result = ""
     raw_result = ""
@@ -281,14 +281,14 @@ def main():
             # 【算法升级 2】：自适应连通域合并 (Box Merging)
             # ----------------------------------------------------
             valid_chars = merge_bounding_boxes(raw_boxes, box_size)
-            print(f"\n[分割报告] 最终定位到 {len(valid_boxes)} 个独立字符")
+            print(f"\n[分割报告] 最终定位到 {len(valid_chars)} 个独立字符")
 
-            if len(valid_boxes) == 0:
+            if len(valid_chars) == 0:
                 print("[-] 未在红框内检测到有效的手写字符！")
                 continue
 
             # 获取字符的最大高度，用于后面的大小写高度比校正
-            max_h = max(b[3] for b in valid_boxes)
+            max_h = max(b[3] for b in valid_chars)
 
             char_probs = []
             aspect_ratios = []
@@ -352,7 +352,7 @@ def main():
             cam_list_idx = (cam_list_idx + 1) % len(available_cams)
             current_cam = available_cams[cam_list_idx]
             print(f"[Camera] 正在热切换摄像头设备到索引: {current_cam} ...")
-            cap = cv2.VideoCapture(current_cam, cv2.CAP_DSHOW)
+            cap = cv2.VideoCapture(current_cam)
             final_result = ""
             raw_result = ""
             uncertain_infos = []
