@@ -61,6 +61,7 @@ PythonProject3/
 ├── predict.py                # 离线批量测试脚本 (带有单词纠错模拟测试与可视化显示)
 ├── camera_detect.py          # 实时摄像头文字提取与智能修正主脚本 (课设演示入口)
 ├── desktop_app.py            # 推荐的单窗口桌面工作台界面
+├── revert_model.py           # 权重极速还原脚本 (用于在实验新模型失败时，一键恢复至历史稳定模型)
 ├── README.md                 # 简体中文说明书
 ├── README_EN.md              # 英文说明书
 └── README_JA.md              # 日文说明书
@@ -119,3 +120,47 @@ python predict.py
 ```
 - 会在控制台打印模拟的 `hello`, `zoom`, `class`, `2026`, `10850` 经过纠错前后的比对报告，展示概率词典与几何后处理的强大效果。
 - 随后会依次从 EMNIST 测试集中随机载入成组图片，弹出可视化对比界面（绿色代表正确，红色代表错误，橙色代表存在歧义）。按回车键切换下一组。
+
+---
+
+## 📊 深度模型训练与课设汇报资产
+
+项目中的 [train.py](file:///c:/Users/Liu/PycharmProjects/PythonProject3%20-%20%E5%89%AF%E6%9C%AC/train.py) 脚本已经过深度升级，包含了一系列模型优化，并在训练过程中自动生成符合学术规范的图表资产，可直接用于课程设计报告和 PPT 答辩展示：
+
+### 1. 模型架构与训练优化
+*   **SiLU (Swish) 激活函数**：将经典的 `HandwrittenCNN`（位于 [src/model.py](file:///c:/Users/Liu/PycharmProjects/PythonProject3%20-%20%E5%89%AF%E6%9C%AC/src/model.py)）中普通的 ReLU 激活函数升级为平滑的 **SiLU (Swish)** 激活函数，提高了模型在边缘细线笔画上的非线性拟合能力。
+*   **Kaiming (He) 初始化**：对卷积层进行 He 权重正态分布初始化，对全连接层进行均值分布初始化，显著加快收敛速度。
+*   **Label Smoothing (标签平滑)**：损失函数引入 `label_smoothing=0.1`，减弱由于人工标记误差带来的过拟合倾向，增强模型的泛化性能。
+*   **权重衰减 (L2 正则化)**：优化器中加入 `weight_decay=1e-4`，保证模型权重的稀疏性。
+*   **自适应学习率衰减 (ReduceLROnPlateau)**：当连续 3 轮验证集损失不降时，学习率自动减半。
+
+### 2. 自动导出汇报资产 (生成至 `checkpoints/` 目录)
+*   **数据增强样本图 (`data_augmentation_samples.png`)**：
+    *   **对应课设要求**：基本要求 1（图像预处理及数据增强）。
+    *   **内容**：展示训练数据随机进行仿射变换、透视形变、弹性形变、光影噪声、模糊等增强处理后的对比 16 宫格。
+*   **训练收敛曲线图 (`training_curves.png`)**：
+    *   **对应课设要求**：基本要求 2/3（模型训练监控）。
+    *   **内容**：Train/Val Loss 变化曲线以及 Train/Val Accuracy 变化曲线，用以展示模型收敛过程。
+*   **62类完整混淆矩阵图 (`confusion_matrix.png`)**：
+    *   **对应课设要求**：设计要求 3（分析错误结果并修正）。
+    *   **内容**：直观表现 62 类字符在测试集上的分类混淆分布（如对角线以外的高亮块代表了易混淆字符对），用以论证后处理纠错模块（[src/corrector.py](file:///c:/Users/Liu/PycharmProjects/PythonProject3%20-%20%E5%89%AF%E6%9C%AC/src/corrector.py)）存在的必要性。
+
+---
+
+## ⚡ 工业级性能优化与鲁棒性增强
+
+为了让系统在答辩演示时呈现出如商业软件般的流畅度和安全性，我们做了以下工程级优化：
+
+### 1. 模型预热 (Inference Warmup)
+*   **痛点**：在 PyTorch 中，GPU/CPU 模型第一次执行 forward 计算时需要初始化 CUDA 上下文或分配计算图内存，会导致首帧出现明显的卡顿（延迟最高可达 2-3 秒）。
+*   **解决对策**：在 `LocalOCRRecognizer`（位于 [src/local_ocr.py](file:///c:/Users/Liu/PycharmProjects/PythonProject3%20-%20%E5%89%AF%E6%9C%AC/src/local_ocr.py)）启动时，系统自动使用 dummy tensor 触发一次前向计算（Warmup）。在主程序打开时，模型推理延迟已被完全消减，首次识别顺滑流畅。
+
+### 2. 多线程解耦 (Thread Pool Execution)
+*   **痛点**：若识别与百度 API 网络请求运行在 GUI 主线程上，在按下空格键或识别按钮的一瞬间，主界面窗口会发生卡顿、掉帧甚至无响应（OS 弹窗提示未响应）。
+*   **解决对策**：我们在 `desktop_app.py` 中引入 `ThreadPoolExecutor`。相机的渲染刷新运行在主线程上（保证流畅视频流），而本地模型推理和百度云端请求被委派给独立的后台线程。当计算和请求结束时，通过回调更新界面卡片，实现全异步、零卡顿的极佳体验。
+
+### 3. 模型备份与一键极速还原 (Backup & Revert)
+*   **痛点**：在对 `train.py` 进行参数实验或重新训练时，如果发生异常中断，或者新训练出来的模型精度不如预期，原来的成熟模型权重可能损坏。
+*   **解决对策**：
+    *   **自动备份**：训练启动时自动将 `checkpoints/emnist_model.pth` 复制备份为 `emnist_model_backup.pth`。
+    *   **一键还原**：在项目根目录运行 `python revert_model.py`，可以在 1 秒内将历史稳定备份覆盖回来，确保演示时权重万无一失。

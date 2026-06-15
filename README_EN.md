@@ -57,6 +57,7 @@ PythonProject3/
 ├── train.py                  # Neural network training script
 ├── predict.py                # Batch evaluation script (with lexicon test & matplotlib GUI)
 ├── camera_detect.py          # Real-time camera OCR and correction script (Demo entry)
+├── revert_model.py           # Model weight reversion utility (one-click restore of backup weights)
 ├── README.md                 # Simplified Chinese Documentation
 ├── README_EN.md              # English Documentation
 └── README_JA.md              # Japanese Documentation
@@ -88,3 +89,47 @@ python predict.py
 ```
 - Prints correction results of simulated test cases (`hello`, `zoom`, `class`, `2026`, `10850`) before/after correction in the terminal.
 - Randomly loads batches of 12 images from the EMNIST test set and plots them in a Matplotlib GUI (Green for correct, Red for wrong, Orange for ambiguous/uncertain). Press Enter to cycle to the next batch.
+
+---
+
+## 📊 Advanced Model Training & Academic Asset Generation
+
+The training pipeline in [train.py](file:///c:/Users/Liu/PycharmProjects/PythonProject3%20-%20%E5%89%AF%E6%9C%AC/train.py) has been heavily optimized with modern deep learning techniques. It automatically generates academic-grade visual assets inside the `checkpoints/` directory to be directly used in your curriculum reports and defense slides:
+
+### 1. Architecture & Optimizer Improvements
+*   **SiLU (Swish) Activation**: Swapped standard ReLU activations in the `HandwrittenCNN` (defined in [src/model.py](file:///c:/Users/Liu/PycharmProjects/PythonProject3%20-%20%E5%89%AF%E6%9C%AC/src/model.py)) with **SiLU (Swish)**, enhancing the model's non-linear capacity on thin gel pen strokes.
+*   **He (Kaiming) Initialization**: Applies Normal He weight initialization to convolutional layers and normal distribution to dense layers, dramatically speeding up training convergence.
+*   **Label Smoothing**: Employs `label_smoothing=0.1` in CrossEntropyLoss to reduce overfitting caused by minor labeling errors in the raw dataset.
+*   **L2 Weight Decay**: Adds `weight_decay=1e-4` to the Adam optimizer to constrain weight magnitude and improve model generalization.
+*   **ReduceLROnPlateau Scheduler**: Automatically halves the learning rate when validation loss plateaus for 3 consecutive epochs.
+
+### 2. Auto-Generated Figures (Saved in `checkpoints/`)
+*   **Data Augmentation Samples (`data_augmentation_samples.png`)**:
+    *   **Course Requirement**: Preprocessing & Data Augmentation (Requirement 1).
+    *   **Details**: Generates a 4x4 grid showcasing augmented EMNIST samples (including elastic deformation, rotation, lighting noise, and translation) used to boost model robustness.
+*   **Training Curves (`training_curves.png`)**:
+    *   **Course Requirement**: Model Training & Evaluation (Requirement 2/3).
+    *   **Details**: Plots the training/validation loss and accuracy curves across 25 epochs to demonstrate model convergence.
+*   **62-Class Confusion Matrix (`confusion_matrix.png`)**:
+    *   **Course Requirement**: Error Analysis & Revision (Requirement 3).
+    *   **Details**: A high-resolution heatmap visualizing classification errors. Unveils the high error rates among visually similar pairs (like `1`/`l`/`I`, `0`/`O`), proving the necessity of our corrector module ([src/corrector.py](file:///c:/Users/Liu/PycharmProjects/PythonProject3%20-%20%E5%89%AF%E6%9C%AC/src/corrector.py)).
+
+---
+
+## ⚡ Industrial-grade Performance & Robustness Optimizations
+
+To deliver a commercial-grade, secure, and lag-free demonstration experience during defense, the following engineering optimizations are integrated:
+
+### 1. Inference Warmup
+*   **Problem**: In PyTorch, the initial forward pass compiles the computing graph and allocates GPU/CPU memory, causing a visible lag (up to 2–3 seconds) on the first recognized character.
+*   **Solution**: During the initialization of `LocalOCRRecognizer` (defined in [src/local_ocr.py](file:///c:/Users/Liu/PycharmProjects/PythonProject3%20-%20%E5%89%AF%E6%9C%AC/src/local_ocr.py)), the system runs a dummy tensor through the network (Warmup). When the main application opens, the initial recognition is instant and lag-free.
+
+### 2. Multithreaded Decoupling
+*   **Problem**: If inference and Baidu cloud requests run on the GUI main thread, the desktop application window freezes (displaying OS "Not Responding" warnings) during recognition.
+*   **Solution**: We decouple tasks using `ThreadPoolExecutor` in `desktop_app.py`. Camera frame updates run continuously on the main thread (guaranteeing a smooth 30 FPS video feed), while heavy model inference and API calls are assigned to a background worker thread, updating result cards asynchronously.
+
+### 3. Model Weight Auto-Backup & One-Click Reversion
+*   **Problem**: Retraining or tuning parameters in `train.py` can corrupt existing weights if the process is terminated abnormally or if the new model performs worse.
+*   **Solution**:
+    *   **Auto-Backup**: When training starts, the script duplicates the current `checkpoints/emnist_model.pth` to `emnist_model_backup.pth`.
+    *   **Quick Restoration**: Running `python revert_model.py` in the root directory overwrites the active weights with the backup file in 1 second, securing your system under all conditions.
