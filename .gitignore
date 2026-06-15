@@ -151,3 +151,11 @@ checkpoints/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Baidu OCR credentials
+baiduocr/key.txt
+
+# Aliyun OCR credentials
+ALIYUN/assesskey.txt
+ALIYUN/newassesskey.txt
+ALIYUN/key.txt

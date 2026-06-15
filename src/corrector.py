@@ -230,8 +230,19 @@ class HandwrittenCorrector:
         # 3. Apply geometry & context adjustments
         adjusted_probs = self.apply_geometry_corrections(probs, aspect_ratios, relative_heights, context)
         
+        # Calculate minimum character confidence in raw prediction
+        raw_confs = [torch.max(p).item() for p in probs]
+        min_conf = min(raw_confs) if raw_confs else 0.0
+
         # 4. Decode
-        if context == "alpha" and len(self.dictionary) > 0:
+        if min_conf > 0.95:
+            # If CNN is extremely confident, bypass dictionary to preserve custom names/acronyms (e.g. CNN, Liu)
+            decoded_chars = []
+            for p in adjusted_probs:
+                idx = torch.argmax(p).item()
+                decoded_chars.append(label_map[idx])
+            decoded_str = "".join(decoded_chars)
+        elif context == "alpha" and len(self.dictionary) > 0:
             decoded_str, conf = self.joint_probability_decode(adjusted_probs)
         else:
             # Numeric or neutral: do argmax on adjusted probabilities
