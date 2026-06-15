@@ -209,13 +209,154 @@ class HandwrittenCorrector:
                 
         return "".join(final_word), avg_prob
 
+    def detect_pattern(self, raw_str):
+        """
+        Dynamically classify the pattern based on character counts and formatting:
+        - id_card, phone_number, license_plate, license_plate_no_cn, numeric, alpha, neutral
+        """
+        n = len(raw_str)
+        if n == 0:
+            return "neutral"
+            
+        digits_count = sum(c.isdigit() for c in raw_str)
+        letters_count = sum(c.isalpha() for c in raw_str)
+        
+        # 1. Check ID Card (18 chars, mostly digits)
+        if n == 18 and digits_count >= 13:
+            return "id_card"
+            
+        # 2. Check Mobile Phone Number (11 chars, starts with 1-like digit, mostly digits)
+        if n == 11 and digits_count >= 8 and raw_str[0] in ('1', 'l', 'I', 'i'):
+            return "phone_number"
+            
+        # 3. Check Chinese License Plate (7 or 8 chars, pos 1 is city letter or letter-like, mostly digits)
+        if (n == 7 or n == 8) and (raw_str[1].isalpha() or raw_str[1] in ('8', '0', '3', '6', '2', '5')) and digits_count >= 4:
+            return "license_plate"
+            
+        # 4. Check License Plate without Chinese Character (6 or 7 chars, starts with letter or letter-like, mostly digits)
+        if n == 6 and (raw_str[0].isalpha() or raw_str[0] in ('8', '0', '3', '6', '2', '5')) and digits_count >= 4:
+            return "license_plate_no_cn"
+        if n == 7 and (raw_str[0].isalpha() or raw_str[0] in ('8', '0', '3', '6', '2', '5')) and (raw_str[1].isalpha() or raw_str[1] in ('8', '0', '3', '6', '2', '5')) and digits_count >= 4:
+            return "license_plate_no_cn"
+            
+        # 5. Check Pure Numeric (strictly dominated by digits, ratio >= 0.8)
+        if digits_count >= n * 0.8:
+            return "numeric"
+            
+        # 6. Check Alphabetical Word (strictly dominated by letters, ratio >= 0.6)
+        if letters_count >= n * 0.6:
+            return "alpha"
+            
+        return "neutral"
+
+    def apply_pattern_mask(self, probs, pattern):
+        """
+        Apply pattern-specific probability masks to guide CNN outputs.
+        """
+        n = len(probs)
+        masked_probs = [p.clone() for p in probs]
+        
+        digits_indices = [char_to_idx[d] for d in "0123456789"]
+        letters_indices = [char_to_idx[l] for l in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"]
+        uppercase_indices = [char_to_idx[l] for l in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
+        lowercase_indices = [char_to_idx[l] for l in "abcdefghijklmnopqrstuvwxyz"]
+        
+        # For strictly uppercase formats, fold lowercase probabilities into uppercase first
+        if pattern in ("id_card", "license_plate", "license_plate_no_cn"):
+            for upper, lower in zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"):
+                u_idx = char_to_idx[upper]
+                l_idx = char_to_idx[lower]
+                for i in range(n):
+                    masked_probs[i][u_idx] += masked_probs[i][l_idx]
+                    masked_probs[i][l_idx] = 0.0
+                    
+        if pattern == "id_card":
+            # First 17 positions are strictly digits
+            for i in range(17):
+                for idx in letters_indices:
+                    masked_probs[i][idx] = 0.0
+            # 18th position is digits or uppercase 'X'
+            for idx in lowercase_indices:
+                masked_probs[17][idx] = 0.0
+            for idx in uppercase_indices:
+                if idx != char_to_idx['X']:
+                    masked_probs[17][idx] = 0.0
+                    
+        elif pattern == "phone_number":
+            # First char is always '1'
+            for idx in range(62):
+                if idx != char_to_idx['1']:
+                    masked_probs[0][idx] = 0.0
+            # All others strictly digits
+            for i in range(1, 11):
+                for idx in letters_indices:
+                    masked_probs[i][idx] = 0.0
+                    
+        elif pattern == "license_plate":
+            # Pos 0: Chinese province character placeholder (we don't restrict to digits, but mask lowercase letters)
+            for idx in lowercase_indices:
+                masked_probs[0][idx] = 0.0
+            # Pos 1: City code (strictly uppercase letter, exclude 'I' and 'O')
+            for idx in digits_indices:
+                masked_probs[1][idx] = 0.0
+            for idx in lowercase_indices:
+                masked_probs[1][idx] = 0.0
+            for c in ('I', 'O'):
+                masked_probs[1][char_to_idx[c]] = 0.0
+                
+            # Pos 2 to N-1: Uppercase letters or digits. Lowercase and illegal letters (I, O) are forbidden.
+            for i in range(2, n):
+                for idx in lowercase_indices:
+                    masked_probs[i][idx] = 0.0
+                for c in ('I', 'i', 'O', 'o'):
+                    masked_probs[i][char_to_idx[c]] = 0.0
+                    
+        elif pattern == "license_plate_no_cn":
+            # Pos 0 must be uppercase letter (if n==7, pos 0 and 1 are letters). Exclude 'I' and 'O'.
+            letter_pos_count = 2 if n == 7 else 1
+            for i in range(letter_pos_count):
+                for idx in digits_indices:
+                    masked_probs[i][idx] = 0.0
+                for idx in lowercase_indices:
+                    masked_probs[i][idx] = 0.0
+                for c in ('I', 'O'):
+                    masked_probs[i][char_to_idx[c]] = 0.0
+                    
+            # Remaining positions are uppercase letters or digits. Lowercase and illegal letters (I, O) are forbidden.
+            for i in range(letter_pos_count, n):
+                for idx in lowercase_indices:
+                    masked_probs[i][idx] = 0.0
+                for c in ('I', 'i', 'O', 'o'):
+                    masked_probs[i][char_to_idx[c]] = 0.0
+                    
+        elif pattern == "numeric":
+            # All characters must be digits
+            for i in range(n):
+                for idx in letters_indices:
+                    masked_probs[i][idx] = 0.0
+                    
+        elif pattern == "alpha":
+            # All characters must be letters
+            for i in range(n):
+                for idx in digits_indices:
+                    masked_probs[i][idx] = 0.0
+                    
+        # Re-normalize probability distributions
+        for i in range(n):
+            s = masked_probs[i].sum()
+            if s > 0:
+                masked_probs[i] /= s
+                
+        return masked_probs
+
     def decode_sequence(self, raw_probs, aspect_ratios, relative_heights):
         """
-        Full decoding pipeline:
-        1. Argmax for raw string.
-        2. Context classification.
-        3. Geometric probability adjustment.
-        4. Joint probability decoding for words, or argmax for numbers.
+        Full decoding pipeline using Dynamic Pattern Matching:
+        1. Get raw prediction.
+        2. Detect formatting pattern.
+        3. Apply pattern probability masks.
+        4. Apply geometry adjustments.
+        5. Run joint probability lexicon matching or dynamic argmax.
         """
         # Convert to pytorch tensor if they are numpy arrays
         probs = [torch.tensor(p) if not isinstance(p, torch.Tensor) else p for p in raw_probs]
@@ -224,28 +365,31 @@ class HandwrittenCorrector:
         raw_chars = [label_map[torch.argmax(p).item()] for p in probs]
         raw_str = "".join(raw_chars)
         
-        # 2. Get context
-        context = self.get_context(raw_chars)
+        # 2. Detect pattern
+        pattern = self.detect_pattern(raw_str)
         
-        # 3. Apply geometry & context adjustments
-        adjusted_probs = self.apply_geometry_corrections(probs, aspect_ratios, relative_heights, context)
+        # 3. Apply pattern mask first
+        masked_probs = self.apply_pattern_mask(probs, pattern)
+        
+        # 4. Map pattern to geom_context
+        geom_context = "neutral"
+        if pattern == "numeric":
+            geom_context = "numeric"
+        elif pattern == "alpha":
+            geom_context = "alpha"
+            
+        adjusted_probs = self.apply_geometry_corrections(masked_probs, aspect_ratios, relative_heights, geom_context)
         
         # Calculate minimum character confidence in raw prediction
         raw_confs = [torch.max(p).item() for p in probs]
         min_conf = min(raw_confs) if raw_confs else 0.0
 
-        # 4. Decode
-        if min_conf > 0.95:
-            # If CNN is extremely confident, bypass dictionary to preserve custom names/acronyms (e.g. CNN, Liu)
-            decoded_chars = []
-            for p in adjusted_probs:
-                idx = torch.argmax(p).item()
-                decoded_chars.append(label_map[idx])
-            decoded_str = "".join(decoded_chars)
-        elif context == "alpha" and len(self.dictionary) > 0:
+        # 5. Decode
+        if pattern == "alpha" and len(self.dictionary) > 0 and min_conf <= 0.95:
+            # English word: run spelling check
             decoded_str, conf = self.joint_probability_decode(adjusted_probs)
         else:
-            # Numeric or neutral: do argmax on adjusted probabilities
+            # Other structured patterns or high confidence alpha, or neutral: do argmax on adjusted
             decoded_chars = []
             for p in adjusted_probs:
                 idx = torch.argmax(p).item()
@@ -253,4 +397,4 @@ class HandwrittenCorrector:
             decoded_str = "".join(decoded_chars)
             conf = 1.0
             
-        return raw_str, decoded_str, context
+        return raw_str, decoded_str, pattern
