@@ -8,7 +8,7 @@
 
 This system is a high-performance handwritten character OCR recognition and correction system developed in accordance with the curriculum design requirements for junior-year "Intelligent Control". While **strictly keeping the underlying custom CNN network architecture (`HandwrittenCNN`) unchanged**, it incorporates advanced post-processing ideas from mature commercial OCR systems (such as QQ Text Extractor). The optimizations focus on **"Image Preprocessing"** and **"Result Correction"**:
 * **Core Classifier**: Utilizes the pre-existing 3-layer `HandwrittenCNN` model with Test-Time Augmentation (TTA) multi-sampling.
-* **Anti-Interference Preprocessing**: Implements a **Gaussian illumination subtraction algorithm for shadow removal** and an **adaptive bounding box clustering & merging algorithm**.
+* **Anti-Interference Preprocessing**: Implements a **Gaussian illumination subtraction algorithm for shadow removal**, an **adaptive bounding box clustering & merging algorithm**, and an **adaptive contrast polarity detection algorithm (seamlessly supporting blackboard chalk or colored papers)**.
 * **Smart Result Correction**: Features a **Joint Probability Lexicon Decoder (MAP)** and **spatial geometric constraints (aspect-ratio/relative height)**.
 * **Hardware & Interaction**: Supports **hot-swapping cameras via the `c` key** (easily toggling between built-in and external webcams) and outputs **Top-3 candidates** for low-confidence characters.
 
@@ -20,6 +20,8 @@ This system is a high-performance handwritten character OCR recognition and corr
 Under webcam capturing conditions, environment shadows (cast by phone or hand) often create large black blotches after simple binarization.
 * **Background Illumination Subtraction**: Estimates the illumination map of the ROI using a large Gaussian filter ($51 \times 51$). By dividing the original gray image by the background illumination map (`cv2.divide`), we get a clean white background with dark strokes, completely eliminating shadows.
 * **CLAHE & Adaptive Thresholding**: Applies Contrast Limited Adaptive Histogram Equalization (CLAHE) and local Adaptive Thresholding on the shadow-free image to extract smooth, noise-free binarized strokes.
+* **Adaptive Contrast Polarity Detection**: Standard binarization assumes a "dark characters on a light background" scenario. To support "white chalk on a dark blackboard" or custom colored paper/ink combinations, the system automatically checks the average intensity of the outermost border pixels of the thresholded image. If white pixels dominate (indicating a light background), it automatically inverts the image to ensure the character is passed to the CNN as a white glyph on a black background. Otherwise, it keeps it as-is. This enables 100% automated environment adaptation without manual toggle buttons.
+
 
 ### 2. Feature Selection & Bounding Box Segmentation (Requirement 2)
 * **Adaptive Bounding Box Clustering & Merging (Box Merging)**:
