@@ -211,11 +211,13 @@ def train():
             for data, target in test_loader:
                 data, target = data.to(device), target.to(device)
                 output = model(data)
-                pred = output.argmax(dim=1).cpu().numpy()
-                t_np = target.cpu().numpy()
-                for t_val, p_val in zip(t_np, pred):
-                    cm[t_val, p_val] += 1
+                pred = output.argmax(dim=1)
                 test_correct += pred.eq(target).sum().item()
+                
+                pred_np = pred.cpu().numpy()
+                t_np = target.cpu().numpy()
+                for t_val, p_val in zip(t_np, pred_np):
+                    cm[t_val, p_val] += 1
                 
         # 绘制 62x62 混淆矩阵
         plt.figure(figsize=(14, 12))
