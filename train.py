@@ -8,10 +8,7 @@ import os
 import time
 import shutil
 
-# 强制配置标准输出为 UTF-8 编码，防止 Windows 控制台因 GBK 无法解析 Emoji 或特殊字符崩溃
-if sys.platform.startswith('win'):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 
 
 def train():
