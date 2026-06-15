@@ -57,7 +57,7 @@ def train():
 
     # 3. 模型与损失函数
     model = HandwrittenCNN(num_classes=62).to(device)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
 
     # 4. 优化器与智能调度 (加入权重衰减 L2 正则化)
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)

@@ -25,15 +25,32 @@ class HandwrittenCNN(nn.Module):
         # 全连接层 (输入大小: 128 * 7 * 7 = 6272)
         self.fc1 = nn.Linear(128 * 7 * 7, 512)
         self.fc2 = nn.Linear(512, num_classes)
+        
+        # He (Kaiming) 权重初始化，加速收敛并提升最终准确率
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.bn1(self.conv1(x))))   # 28 -> 14
+        # 使用更先进平滑的 SiLU (Swish) 激活函数代替普通 ReLU，增强非线性表征能力
+        x = self.pool(F.silu(self.bn1(self.conv1(x))))   # 28 -> 14
         x = self.dropout_conv(x)
-        x = self.pool(F.relu(self.bn2(self.conv2(x))))   # 14 -> 7
+        x = self.pool(F.silu(self.bn2(self.conv2(x))))   # 14 -> 7
         x = self.dropout_conv(x)
-        x = F.relu(self.bn3(self.conv3(x)))               # 7 -> 7 (无池化)
+        x = F.silu(self.bn3(self.conv3(x)))               # 7 -> 7 (无池化)
         x = x.view(-1, 128 * 7 * 7)
-        x = F.relu(self.fc1(x))
+        x = F.silu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
         return x
