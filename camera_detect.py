@@ -531,7 +531,20 @@ def main():
         # 滤波去噪与自适应二值化
         blur = cv2.GaussianBlur(cv2.medianBlur(enhanced, 5), (3, 3), 0)
         thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY_INV, 11, 5)
+                                       cv2.THRESH_BINARY, 11, 5)
+        
+        # 自动对比度极性检测：统计图像边缘像素的分布
+        # 取图像四周最外层的边缘像素
+        h_t, w_t = thresh.shape
+        border_pixels = np.concatenate([
+            thresh[0, :],          # 上边界
+            thresh[-1, :],         # 下边界
+            thresh[:, 0],          # 左边界
+            thresh[:, -1]          # 右边界
+        ])
+        # 如果边缘像素中白色(255)占了大多数，说明背景是亮色(如白纸)，我们需要反色让文字变白背景变黑
+        if np.mean(border_pixels) > 127:
+            thresh = 255 - thresh
 
         # 轮询百度云 OCR 识别线程结果
         if cloud_future is not None and cloud_future.done():
