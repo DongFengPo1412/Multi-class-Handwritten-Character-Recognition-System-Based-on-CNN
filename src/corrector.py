@@ -23,6 +23,16 @@ for a, b in CONFUSING_PAIRS:
     CONFUSING_SET.add((a.lower(), b.lower()))
     CONFUSING_SET.add((b.lower(), a.lower()))
 
+DIGIT_TO_ALPHA_CONFUSIONS = {
+    '0': 'oO',
+    '1': 'liLI',
+    '2': 'zZ',
+    '5': 'sS',
+    '6': 'gG',
+    '8': 'bB',
+    '9': 'gqGQ',
+}
+
 class HandwrittenCorrector:
     def __init__(self, dict_path=None):
         self.dictionary = set()
@@ -209,6 +219,76 @@ class HandwrittenCorrector:
                 
         return "".join(final_word), avg_prob
 
+    def fold_digit_confusions_to_alpha(self, probs):
+        folded_probs = []
+        digits_indices = [char_to_idx[d] for d in "0123456789"]
+        for prob in probs:
+            folded = prob.clone()
+            for digit, letters in DIGIT_TO_ALPHA_CONFUSIONS.items():
+                digit_idx = char_to_idx[digit]
+                share = folded[digit_idx] / float(len(letters))
+                for letter in letters:
+                    folded[char_to_idx[letter]] += share
+                folded[digit_idx] = 0.0
+
+            for idx in digits_indices:
+                folded[idx] = 0.0
+
+            s = folded.sum()
+            if s > 0:
+                folded /= s
+            folded_probs.append(folded)
+        return folded_probs
+
+    def is_confusable_with_word_char(self, raw_char, word_char):
+        raw_lower = raw_char.lower()
+        word_lower = word_char.lower()
+        if raw_lower == word_lower:
+            return True
+        if (raw_lower, word_lower) in CONFUSING_SET:
+            return True
+        if raw_char in DIGIT_TO_ALPHA_CONFUSIONS:
+            return word_char in DIGIT_TO_ALPHA_CONFUSIONS[raw_char]
+        return False
+
+    def word_compatibility_score(self, raw_str, word):
+        if len(raw_str) != len(word):
+            return -999.0
+
+        score = 0.0
+        hard_mismatches = 0
+        for raw_char, word_char in zip(raw_str, word):
+            if raw_char.lower() == word_char.lower():
+                score += 1.0
+            elif self.is_confusable_with_word_char(raw_char, word_char):
+                score += 0.72
+            else:
+                hard_mismatches += 1
+                score -= 1.0
+
+        if hard_mismatches > max(1, len(word) // 3):
+            return -999.0
+        return score
+
+    def try_alpha_lexicon_decode(self, probs, aspect_ratios, relative_heights, raw_str):
+        if len(self.dictionary) == 0 or len(raw_str) < 2:
+            return None, 0.0
+        if not any(c.isalpha() for c in raw_str):
+            return None, 0.0
+
+        alpha_probs = self.fold_digit_confusions_to_alpha(probs)
+        alpha_probs = self.apply_geometry_corrections(alpha_probs, aspect_ratios, relative_heights, "alpha")
+        decoded, confidence = self.joint_probability_decode(alpha_probs)
+        decoded_lower = decoded.lower()
+        if decoded_lower not in self.dictionary or len(decoded_lower) != len(raw_str):
+            return None, confidence
+
+        compatibility = self.word_compatibility_score(raw_str, decoded_lower)
+        min_compatibility = max(1.4, len(raw_str) * 0.42)
+        if confidence >= 0.06 and compatibility >= min_compatibility:
+            return decoded, confidence
+        return None, confidence
+
     def detect_pattern(self, raw_str):
         """
         Dynamically classify the pattern based on character counts and formatting:
@@ -385,7 +465,16 @@ class HandwrittenCorrector:
         min_conf = min(raw_confs) if raw_confs else 0.0
 
         # 5. Decode
-        if pattern == "alpha" and len(self.dictionary) > 0 and min_conf <= 0.95:
+        structured_patterns = {"id_card", "phone_number", "license_plate", "license_plate_no_cn", "numeric"}
+        alpha_decoded = None
+        if pattern not in structured_patterns:
+            alpha_decoded, _ = self.try_alpha_lexicon_decode(probs, aspect_ratios, relative_heights, raw_str)
+
+        if alpha_decoded is not None:
+            decoded_str = alpha_decoded
+            pattern = "alpha"
+            conf = 1.0
+        elif pattern == "alpha" and len(self.dictionary) > 0 and min_conf <= 0.95:
             # English word: run spelling check
             decoded_str, conf = self.joint_probability_decode(adjusted_probs)
         else:

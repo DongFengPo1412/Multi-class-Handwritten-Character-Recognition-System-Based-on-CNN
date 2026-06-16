@@ -104,6 +104,16 @@ def test_patterns():
             "rhs": [1.0, 0.7, 1.0, 1.0, 0.7],
             "expected_pattern": "alpha",
             "expected_decoded": "hello"
+        },
+        # 7. Alphabetical Word with stronger digit confusions: "he110" -> "hello"
+        {
+            "chars": [
+                {'h': 0.9}, {'e': 0.9}, {'1': 0.95}, {'1': 0.95}, {'0': 0.95}
+            ],
+            "ars": [0.6, 0.6, 0.3, 0.3, 0.6],
+            "rhs": [1.0, 0.7, 1.0, 1.0, 0.7],
+            "expected_pattern": "alpha",
+            "expected_decoded": "hello"
         }
     ]
 

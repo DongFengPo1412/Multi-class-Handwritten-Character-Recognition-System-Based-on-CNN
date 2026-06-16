@@ -120,6 +120,99 @@ def sort_boxes_reading_order(boxes):
     return ordered
 
 
+def split_wide_box(binary_img, box):
+    x, y, w, h = box
+    if w <= 0 or h <= 0:
+        return []
+
+    aspect = w / float(h)
+    if aspect < 1.18 or w < 18:
+        return [box]
+
+    target_char_w = max(9.0, h * 0.56)
+    expected_count = int(round(w / target_char_w))
+    if expected_count < 2:
+        return [box]
+    expected_count = min(expected_count, 12)
+
+    crop = binary_img[y:y + h, x:x + w]
+    if crop.size == 0:
+        return [box]
+
+    projection = np.sum(crop > 0, axis=0).astype(np.float32)
+    if projection.max() <= 0:
+        return [box]
+
+    kernel_size = max(3, min(9, int(w * 0.04) | 1))
+    kernel = np.ones(kernel_size, dtype=np.float32) / float(kernel_size)
+    smooth = np.convolve(projection, kernel, mode="same")
+
+    low_threshold = max(1.0, smooth.max() * 0.16)
+    low_cols = smooth <= low_threshold
+    runs = []
+    start = None
+    for idx, is_low in enumerate(low_cols):
+        if is_low and start is None:
+            start = idx
+        elif not is_low and start is not None:
+            runs.append((start, idx - 1))
+            start = None
+    if start is not None:
+        runs.append((start, w - 1))
+
+    margin = max(4, int(w * 0.06))
+    valley_centers = [
+        (a + b) // 2
+        for a, b in runs
+        if b >= margin and a <= w - margin and (b - a + 1) <= max(10, int(w * 0.22))
+    ]
+
+    cuts = []
+    min_gap = max(6, int(target_char_w * 0.45))
+    for k in range(1, expected_count):
+        ideal = int(round(k * w / expected_count))
+        search_radius = max(7, int(target_char_w * 0.45))
+        candidates = [c for c in valley_centers if abs(c - ideal) <= search_radius]
+        if candidates:
+            cut = min(candidates, key=lambda c: (smooth[c], abs(c - ideal)))
+        else:
+            left = max(margin, ideal - search_radius)
+            right = min(w - margin, ideal + search_radius)
+            if right <= left:
+                cut = ideal
+            else:
+                local = smooth[left:right + 1]
+                cut = left + int(np.argmin(local))
+
+        if cuts and cut - cuts[-1] < min_gap:
+            continue
+        if cut < margin or w - cut < margin:
+            continue
+        cuts.append(cut)
+
+    if not cuts:
+        return [box]
+
+    parts = []
+    edges = [0] + cuts + [w]
+    for left, right in zip(edges[:-1], edges[1:]):
+        part = crop[:, left:right]
+        cols = np.where(np.sum(part > 0, axis=0) > 0)[0]
+        rows = np.where(np.sum(part > 0, axis=1) > 0)[0]
+        if len(cols) == 0 or len(rows) == 0:
+            continue
+        px = x + left + int(cols[0])
+        py = y + int(rows[0])
+        pw = int(cols[-1] - cols[0] + 1)
+        ph = int(rows[-1] - rows[0] + 1)
+        if pw >= 4 and ph >= 8 and (pw * ph) >= 45:
+            parts.append((px, py, pw, ph))
+
+    if len(parts) < 2:
+        return [box]
+    return parts
+
+
 def should_merge(box1, box2):
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
@@ -180,7 +273,7 @@ def should_merge(box1, box2):
     return False
 
 
-def merge_bounding_boxes(raw_boxes, box_size):
+def merge_bounding_boxes(raw_boxes, box_size, binary_img=None):
     if not raw_boxes:
         return []
         
@@ -225,8 +318,19 @@ def merge_bounding_boxes(raw_boxes, box_size):
     for (x, y, w, h) in current_boxes:
         if w >= 5 and h >= 8 and (w * h) >= 80:
             valid_boxes.append((x, y, w, h))
-            
+
+    if binary_img is not None:
+        split_boxes = []
+        for line in group_boxes_by_reading_lines(valid_boxes):
+            for box in line:
+                split_boxes.extend(split_wide_box(binary_img, box))
+        valid_boxes = split_boxes
+
     return sort_boxes_reading_order(valid_boxes)
+
+
+def segment_character_boxes(binary_img, raw_boxes, box_size):
+    return merge_bounding_boxes(raw_boxes, box_size, binary_img=binary_img)
 
 
 
@@ -314,7 +418,7 @@ class LocalOCRRecognizer:
             if 40 < area < 30000 and 8 < x < box_size - 8 and 8 < y < box_size - 8:
                 raw_boxes.append((x, y, w, h))
                 
-        valid_chars = merge_bounding_boxes(raw_boxes, box_size)
+        valid_chars = segment_character_boxes(thresh, raw_boxes, box_size)
         valid_lines = group_boxes_by_reading_lines(valid_chars)
         
         character_count = len(valid_chars)

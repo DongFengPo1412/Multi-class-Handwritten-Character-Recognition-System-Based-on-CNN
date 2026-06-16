@@ -6,6 +6,7 @@ from src.model import HandwrittenCNN
 from src.utils import label_map
 from src.corrector import HandwrittenCorrector
 from src.baidu_ocr import BaiduOCRClient, BaiduOCRUnavailable
+from src.local_ocr import segment_character_boxes
 from concurrent.futures import ThreadPoolExecutor
 
 # 初始化纠错器
@@ -614,7 +615,7 @@ def main():
             # ----------------------------------------------------
             # 【算法升级 2】：自适应连通域合并 (Box Merging)
             # ----------------------------------------------------
-            valid_chars = merge_bounding_boxes(raw_boxes, box_size)
+            valid_chars = segment_character_boxes(thresh, raw_boxes, box_size)
             valid_lines = group_boxes_by_reading_lines(valid_chars)
             print(f"\n[分割报告] 最终定位到 {len(valid_chars)} 个独立字符 / {len(valid_lines)} 行（已按阅读顺序排序）")
 
