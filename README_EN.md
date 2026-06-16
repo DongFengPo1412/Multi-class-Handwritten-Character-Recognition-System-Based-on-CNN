@@ -87,19 +87,13 @@ where $\oplus$ and $\ominus$ denote dilation and erosion, respectively. This ope
 #### 2.2.2 Iterative Bounding Box Merging
 Traditional segmenters only perform a single sequential pass, which frequently misses disjoint parts of letters. This system implements an iterative bounding box merging algorithm that runs multiple rounds of a heuristic function until the number of boxes converges.
 Let two bounding boxes be $B_1(x_1, y_1, w_1, h_1)$ and $B_2(x_2, y_2, w_2, h_2)$. They are merged based on the following criteria:
-1. **Nesting Check**: If one box is nested almost entirely within another (with tolerance $\delta = 3$), they are merged.
-2. **Vertical Grouping (Lowercase `i`, `j` dots)**: The horizontal overlap projection width ratio $O_x$ between $B_1$ and $B_2$ is computed. If $O_x > 0.4$, and the vertical gap $\Delta y$ satisfies:
-
-   $$
-   \Delta y < \max\left(15, 1.8 \cdot \min(h_1, h_2)\right)
-   $$
-
-   and the combined height does not exceed $2.2$ times the maximum height of the two boxes, they are merged.
+1. **Nesting Check**: If one box is nested almost entirely within another (with tolerance $\delta = 3$ ), they are merged.
+2. **Vertical Grouping (Lowercase `i`, `j` dots)**: The horizontal overlap projection width ratio $O_x$ between $B_1$ and $B_2$ is computed. If $O_x > 0.4$ , and the vertical gap $\Delta y$ satisfies: $\Delta y < \max\left(15, 1.8 \cdot \min(h_1, h_2)\right)$ , and the combined height does not exceed $2.2$ times the maximum height of the two boxes, they are merged.
 3. **Horizontal Merging (Broken Pen Strokes)**: When the vertical overlap ratio $O_y > 0.5$, if the horizontal gap is $\Delta x \le 3$ pixels, or if $\Delta x \le 6$ pixels while one of the boxes is extremely narrow (width $\le 5$ pixels, signifying a stroke fragment), horizontal merging is triggered.
 
 #### 2.2.3 Center-of-Mass Alignment (EMNIST Normalization)
 To eliminate spatial shift noise, the system aligns the character based on Image Moments rather than simple bounding box centering.
-We first calculate the zero-order moment $M_{00}$ and first-order moments $M_{10}, M_{01}$ of the binary character crop $I(x, y) \in \{0, 1\}$:
+We first calculate the zero-order moment $M_{00}$ and first-order moments $M_{10}, M_{01}$ of the binary character crop $I(x, y) \in \{0, 1\}$ :
 
 $$
 M_{pq} = \sum_{x} \sum_{y} x^p y^q I(x, y)
@@ -111,7 +105,7 @@ $$
 x_c = \frac{M_{10}}{M_{00}}, \quad y_c = \frac{M_{01}}{M_{00}}
 $$
 
-The glyph is resized to $20 \times 20$ pixels and placed on a standard $28 \times 28$ canvas. We then apply an affine translation $(\Delta x, \Delta y)$:
+The glyph is resized to $20 \times 20$ pixels and placed on a standard $28 \times 28$ canvas. We then apply an affine translation $(\Delta x, \Delta y)$ :
 
 $$
 \begin{bmatrix} \Delta x \\ \Delta y \end{bmatrix} = \begin{bmatrix} 14.0 - x_c \\ 14.0 - y_c \end{bmatrix}
@@ -211,11 +205,7 @@ The API client is implemented in [src/baidu_ocr.py](file:///C:/Users/Liu/Pycharm
 
 ### 3.1 Loss Function & Optimization Hyperparameters
 * **Label Smoothed Cross-Entropy Loss**:
-  Let $y$ denote the true label, and $p(\cdot \mid x)$ be the predicted probability distribution for input $x$. With smoothing factor $\alpha = 0.1$ and class count $K = 62$, the label smoothed cross-entropy loss is defined as:
-
-  $$
-  L_{\mathrm{smooth}} = -(1 - \alpha) \log p(y \mid x) - \frac{\alpha}{K} \sum_{k=1}^K \log p(k \mid x)
-  $$
+  Let $y$ denote the true label, and $p(\cdot \mid x)$ be the predicted probability distribution for input $x$ . With smoothing factor $\alpha = 0.1$ and class count $K = 62$ , the label smoothed cross-entropy loss is defined as: $L_{\mathrm{smooth}} = -(1 - \alpha) \log p(y \mid x) - \frac{\alpha}{K} \sum_{k=1}^K \log p(k \mid x)$ .
 
   This softens target distributions to mitigate overconfidence and enhance the model's tolerance to noisy labels in handwriting EMNIST glyphs.
 * **Optimizer**: Adam optimization with base learning rate $\eta_0 = 10^{-3}$ and weight decay regularizer $10^{-4}$ to constrain weight magnitude.
