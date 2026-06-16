@@ -176,7 +176,7 @@ def merge_bounding_boxes(raw_boxes, box_size):
 
 
 class LocalOCRResult:
-    def __init__(self, raw_text: str, character_count: int, line_count: int, corrected_text: str, contexts: list[str], threshold: np.ndarray, uncertain: list[str]):
+    def __init__(self, raw_text: str, character_count: int, line_count: int, corrected_text: str, contexts: list[str], threshold: np.ndarray, uncertain: list[str], boxes: list = None):
         self.raw_text = raw_text
         self.character_count = character_count
         self.line_count = line_count
@@ -184,6 +184,7 @@ class LocalOCRResult:
         self.contexts = contexts
         self.threshold = threshold
         self.uncertain = uncertain
+        self.boxes = boxes or []
 
 
 class LocalOCRRecognizer:
@@ -268,7 +269,8 @@ class LocalOCRRecognizer:
                 corrected_text="",
                 contexts=[],
                 threshold=thresh,
-                uncertain=[]
+                uncertain=[],
+                boxes=[]
             )
             
         max_h = max(b[3] for b in valid_chars)
@@ -324,11 +326,12 @@ class LocalOCRRecognizer:
         final_result = " ".join(decoded_parts)
         
         return LocalOCRResult(
-            raw_text=raw_result,
-            character_count=character_count,
-            line_count=line_count,
-            corrected_text=final_result,
-            contexts=contexts,
-            threshold=thresh,
-            uncertain=uncertain_infos
+            raw_result,
+            character_count,
+            line_count,
+            final_result,
+            contexts,
+            thresh,
+            uncertain_infos,
+            valid_chars
         )

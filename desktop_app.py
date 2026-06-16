@@ -107,6 +107,7 @@ class OCRDesktopApp:
         self.recognizer = LocalOCRRecognizer()
         self.baidu_client = None
         self.baidu_enabled = True
+        self.frozen = False
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.pending = None
         self.current_frame = None
@@ -134,7 +135,7 @@ class OCRDesktopApp:
     def scan_cameras(max_index=4):
         indices = []
         for index in range(max_index):
-            capture = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            capture = cv2.VideoCapture(index)
             if capture.isOpened():
                 ok, _ = capture.read()
                 if ok:
@@ -144,7 +145,7 @@ class OCRDesktopApp:
 
     @staticmethod
     def open_camera(index):
-        capture = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        capture = cv2.VideoCapture(index)
         capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         return capture
@@ -169,6 +170,16 @@ class OCRDesktopApp:
             font=("Segoe UI", 10),
         ).pack(anchor="w", pady=(2, 0))
 
+        self.status_badge = tk.Label(
+            header,
+            text="LIVE",
+            bg=COLORS["green"],
+            fg="white",
+            padx=12,
+            pady=7,
+            font=("Segoe UI", 9, "bold"),
+        )
+        self.status_badge.pack(side="right", padx=(8, 0))
         self.baidu_badge = tk.Label(
             header,
             text="BAIDU CONNECTING",
@@ -247,11 +258,11 @@ class OCRDesktopApp:
         )
         self.baidu_button.pack(side="left")
 
-        self.raw_card = ResultCard(side, "LOCAL CNN / RAW", COLORS["orange"])
+        self.raw_card = ResultCard(side, "原始识别结果 (LOCAL CNN / RAW)", COLORS["orange"])
         self.raw_card.pack(fill="x", pady=(0, 10))
-        self.corrected_card = ResultCard(side, "CORRECTED RESULT", COLORS["green"])
+        self.corrected_card = ResultCard(side, "推理校正结果 (CORRECTED)", COLORS["green"])
         self.corrected_card.pack(fill="x", pady=(0, 10))
-        self.baidu_card = ResultCard(side, "BAIDU HANDWRITING OCR", COLORS["blue"])
+        self.baidu_card = ResultCard(side, "百度云识别结果 (BAIDU OCR)", COLORS["blue"])
         self.baidu_card.pack(fill="x", pady=(0, 10))
 
         preview_card = tk.Frame(
@@ -265,7 +276,7 @@ class OCRDesktopApp:
         preview_card.pack(fill="x", pady=(0, 10))
         tk.Label(
             preview_card,
-            text="AI VISION PREVIEW",
+            text="实时二值化动态跟踪图 (AI VISION)",
             bg=COLORS["surface"],
             fg=COLORS["muted"],
             font=("Segoe UI", 9, "bold"),
@@ -331,7 +342,7 @@ class OCRDesktopApp:
 
         footer = tk.Label(
             self.root,
-            text="SPACE  Recognize     B  Baidu OCR     C  Camera     Q  Quit",
+            text="SPACE  Recognize/Resume     B  Baidu OCR     C  Camera     ENTER/ESC  Resume     Q  Quit",
             bg=COLORS["surface"],
             fg="#626a74",
             anchor="w",
@@ -345,6 +356,8 @@ class OCRDesktopApp:
         self.root.bind("<space>", lambda _event: self.start_recognition())
         self.root.bind("b", lambda _event: self.toggle_baidu())
         self.root.bind("c", lambda _event: self.switch_camera())
+        self.root.bind("<Return>", lambda _event: self.unfreeze() if self.frozen else None)
+        self.root.bind("<Escape>", lambda _event: self.unfreeze() if self.frozen else None)
         self.root.bind("q", lambda _event: self.close())
 
     def add_log(self, message, summary=None):
@@ -423,39 +436,74 @@ class OCRDesktopApp:
             self.baidu_card.set_result("--", str(exc))
 
     def update_camera(self):
-        ok, frame = self.capture.read()
-        if ok:
-            self.current_frame = frame
-            height, width = frame.shape[:2]
-            size = min(420, int(min(height, width) * 0.62))
-            x1 = (width - size) // 2
-            y1 = (height - size) // 2
-            x2, y2 = x1 + size, y1 + size
-            self.current_roi = frame[y1:y2, x1:x2].copy()
+        if not self.frozen:
+            ok, frame = self.capture.read()
+            if ok:
+                self.current_frame = frame
+                height, width = frame.shape[:2]
+                size = min(420, int(min(height, width) * 0.62))
+                x1 = (width - size) // 2
+                y1 = (height - size) // 2
+                x2, y2 = x1 + size, y1 + size
+                self.current_roi = frame[y1:y2, x1:x2].copy()
 
-            dimmed = cv2.addWeighted(frame, 0.48, np.full_like(frame, 15), 0.52, 0)
-            dimmed[y1:y2, x1:x2] = frame[y1:y2, x1:x2]
-            color = (196, 154, 28)
-            length = 42
-            for start, end in [
-                ((x1, y1), (x1 + length, y1)), ((x1, y1), (x1, y1 + length)),
-                ((x2, y1), (x2 - length, y1)), ((x2, y1), (x2, y1 + length)),
-                ((x1, y2), (x1 + length, y2)), ((x1, y2), (x1, y2 - length)),
-                ((x2, y2), (x2 - length, y2)), ((x2, y2), (x2, y2 - length)),
-            ]:
-                cv2.line(dimmed, start, end, color, 3, cv2.LINE_AA)
+                dimmed = cv2.addWeighted(frame, 0.48, np.full_like(frame, 15), 0.52, 0)
+                dimmed[y1:y2, x1:x2] = frame[y1:y2, x1:x2]
+                color = (196, 154, 28)
+                length = 42
+                for start, end in [
+                    ((x1, y1), (x1 + length, y1)), ((x1, y1), (x1, y1 + length)),
+                    ((x2, y1), (x2 - length, y1)), ((x2, y1), (x2, y1 + length)),
+                    ((x1, y2), (x1 + length, y2)), ((x1, y2), (x1, y2 - length)),
+                    ((x2, y2), (x2 - length, y2)), ((x2, y2), (x2, y2 - length)),
+                ]:
+                    cv2.line(dimmed, start, end, color, 3, cv2.LINE_AA)
 
-            panel_width = max(self.video_label.winfo_width(), 700)
-            panel_height = max(self.video_label.winfo_height(), 500)
-            self.video_photo = cv_to_photo(dimmed, panel_width, panel_height)
-            self.video_label.configure(image=self.video_photo)
+                panel_width = max(self.video_label.winfo_width(), 700)
+                panel_height = max(self.video_label.winfo_height(), 500)
+                self.video_photo = cv_to_photo(dimmed, panel_width, panel_height)
+                self.video_label.configure(image=self.video_photo)
+
+                # Real-time binarization tracking preview
+                if self.current_roi is not None:
+                    roi = self.current_roi
+                    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                    bg = cv2.GaussianBlur(gray, (51, 51), 0)
+                    gray_no_shadow = cv2.divide(gray, bg, scale=255)
+                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                    enhanced = clahe.apply(gray_no_shadow)
+                    blur = cv2.GaussianBlur(cv2.medianBlur(enhanced, 5), (3, 3), 0)
+                    thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                                   cv2.THRESH_BINARY, 11, 5)
+                    h_t, w_t = thresh.shape
+                    border_pixels = np.concatenate([
+                        thresh[0, :], thresh[-1, :], thresh[:, 0], thresh[:, -1]
+                    ])
+                    if np.mean(border_pixels) > 127:
+                        thresh = 255 - thresh
+
+                    self.preview_source = 255 - thresh
+                    self.render_preview()
+            else:
+                warning_msg = "[Warning] Failed to read frame from camera. Check camera connection or index."
+                print(warning_msg)
+                self.notice.configure(text=warning_msg)
+                
         self.root.after(30, self.update_camera)
 
     def start_recognition(self):
+        if self.frozen:
+            self.unfreeze()
+            return
+
         if self.current_roi is None or self.pending is not None:
             return
+        
+        # Freeze camera and binary previews
+        self.frozen = True
         self.recognize_button.configure(state="disabled", text="Recognizing...")
-        self.add_log("CNN inference and cloud reference are running.")
+        self.status_badge.configure(text="FREEZE", bg=COLORS["orange"])
+        self.add_log("画面已定格。正在运行推理识别与纠错处理...")
         self.pending = self.executor.submit(self.run_recognition, self.current_roi.copy())
 
     def run_recognition(self, roi):
@@ -473,42 +521,88 @@ class OCRDesktopApp:
         if self.pending is not None and self.pending.done():
             future = self.pending
             self.pending = None
-            self.recognize_button.configure(state="normal", text="Recognize")
+            # Stay in frozen state, recognize_button text becomes "Resume" (unfreeze trigger)
+            self.recognize_button.configure(state="normal", text="Resume")
             try:
                 local, baidu, error = future.result()
                 self.show_result(local, baidu, error)
             except Exception as exc:
                 self.add_log(f"Recognition failed: {exc}")
+                self.unfreeze()
         self.root.after(80, self.poll_result)
 
     def show_result(self, local, baidu, error):
         self.raw_card.set_result(
             local.raw_text,
-            f"{local.character_count} characters / {local.line_count} lines",
+            f"{local.character_count} 个字符 / {local.line_count} 行",
         )
         context = " / ".join(local.contexts) if local.contexts else "neutral"
-        self.corrected_card.set_result(local.corrected_text, f"Context: {context}")
+        self.corrected_card.set_result(local.corrected_text, f"推断语境: {context}")
 
         self.preview_source = 255 - local.threshold
         self.render_preview()
 
+        # Draw character bounding boxes on the frozen camera frame!
+        if self.current_frame is not None and local.boxes:
+            marked_frame = self.current_frame.copy()
+            height, width = marked_frame.shape[:2]
+            size = min(420, int(min(height, width) * 0.62))
+            x1 = (width - size) // 2
+            y1 = (height - size) // 2
+            x2, y2 = x1 + size, y1 + size
+            
+            # Dim background
+            dimmed = cv2.addWeighted(marked_frame, 0.48, np.full_like(marked_frame, 15), 0.52, 0)
+            dimmed[y1:y2, x1:x2] = marked_frame[y1:y2, x1:x2]
+            
+            # Draw bounding boxes and index numbers
+            color = (255, 255, 0) # Cyan in BGR
+            for idx, (bx, by, bw, bh) in enumerate(local.boxes, 1):
+                abs_x1, abs_y1 = x1 + bx, y1 + by
+                abs_x2, abs_y2 = abs_x1 + bw, abs_y1 + bh
+                cv2.rectangle(dimmed, (abs_x1, abs_y1), (abs_x2, abs_y2), color, 2)
+                cv2.putText(dimmed, str(idx), (abs_x1, max(abs_y1 - 5, 12)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+            
+            # Draw corner overlays
+            length = 42
+            corner_color = (196, 154, 28)
+            for start, end in [
+                ((x1, y1), (x1 + length, y1)), ((x1, y1), (x1, y1 + length)),
+                ((x2, y1), (x2 - length, y1)), ((x2, y1), (x2, y1 + length)),
+                ((x1, y2), (x1 + length, y2)), ((x1, y2), (x1, y2 - length)),
+                ((x2, y2), (x2 - length, y2)), ((x2, y2), (x2, y2 - length)),
+            ]:
+                cv2.line(dimmed, start, end, corner_color, 3, cv2.LINE_AA)
+
+            panel_width = max(self.video_label.winfo_width(), 700)
+            panel_height = max(self.video_label.winfo_height(), 500)
+            self.video_photo = cv_to_photo(dimmed, panel_width, panel_height)
+            self.video_label.configure(image=self.video_photo)
+
         if baidu is not None:
             confidence = baidu.average_confidence
-            detail = f"Average confidence: {confidence:.1%}" if confidence is not None else ""
+            detail = f"平均置信度: {confidence:.1%}" if confidence is not None else ""
             self.baidu_card.set_result(baidu.text, detail)
         elif error:
             self.baidu_card.set_result("--", error)
         else:
-            self.baidu_card.set_result("Disabled", "")
+            self.baidu_card.set_result("已禁用", "")
 
         if local.uncertain:
             details = " | ".join(local.uncertain)
             self.add_log(
-                f"{len(local.uncertain)} uncertain characters. {details}",
-                f"{len(local.uncertain)} uncertain characters. Click Expand for details.",
+                f"{len(local.uncertain)} 个不确定字符. {details}",
+                f"{len(local.uncertain)} 个不确定字符. 点击展开查看详情.",
             )
         else:
-            self.add_log("Recognition complete. No low-confidence characters.")
+            self.add_log("识别完成。所有字符均高置信度通过。")
+
+    def unfreeze(self):
+        self.frozen = False
+        self.recognize_button.configure(text="Recognize")
+        self.status_badge.configure(text="LIVE", bg=COLORS["green"])
+        self.add_log("定格已解除，恢复实时相机画面与二值化跟踪。")
 
     def toggle_baidu(self):
         self.baidu_enabled = not self.baidu_enabled
