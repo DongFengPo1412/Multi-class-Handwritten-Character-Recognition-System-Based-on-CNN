@@ -15,7 +15,7 @@ This system design implements an end-to-end handwritten character optical charac
 * **Convolutional Network Inference**: Features a 3-layer convolutional block `HandwrittenCNN` utilizing a smooth SiLU (Swish) activation function and Kaiming normal weight initialization. Employs Test-Time Augmentation (TTA) multi-sampling fusion and model warm-up to optimize response speed.
 * **Lexicon-Based Spelling Correction**: Employs a Maximum A Posteriori (MAP) joint log-likelihood lexicon decoder, combined with aspect ratio heuristics and intra-line relative height scaling to disambiguate visual homoglyphs (e.g., `0/O`, `1/I/l`, case mismatches).
 * **Baidu OCR Reference Baseline**: Integrates the Baidu Cloud Handwriting OCR API as an external comparison baseline to evaluate the local custom model's recognition and correction performance during operation.
-* **Asynchronous GUI Workstation**: Implements a responsive single-window dashboard in Tkinter driven by background thread pool asynchronous computing. This keeps the camera feed running smoothly at 30 FPS while decoupling heavy local inference and remote API requests, supporting dynamic freeze-frame and live-stream hotkey switching.
+* **Asynchronous GUI Workstation**: Implements a responsive single-window dashboard in Tkinter driven by background thread pool asynchronous computing. This keeps the camera feed running smoothly at $30\text{ ms}$ while decoupling heavy local inference and remote API requests, supporting dynamic freeze-frame and live-stream hotkey switching.
 
 ---
 
@@ -41,13 +41,13 @@ graph TD
 Under physical webcam capture conditions, hands or phones often cast shadows, causing large black blotches when applying standard thresholding. The system handles this via a background illumination subtraction algorithm. It first estimates the local background ambient illumination using a large Gaussian smoothing kernel, and then compensates for shadows via matrix division.
 
 The mathematical model is formulated as:
-$$\text{Gray}_{\text{no\_shadow}}(x, y) = \min \left( \frac{\text{Gray}(x, y)}{G_{\sigma}(x, y) * \text{Gray}(x, y)} \times 255, 255 \right)$$
-where $G_{\sigma}$ denotes a Gaussian smoothing kernel with standard deviation $\sigma = 51$. This division is executed as a parallel matrix operation using OpenCV's `cv2.divide` to recover clean, shadow-free strokes.
+$$\text{Gray}_{\text{no\_shadow}}(x, y) = \min \left( \frac{\text{Gray}(x, y)}{(G_{\sigma} \ast \text{Gray})(x, y)} \times 255, 255 \right)$$
+where $G_{\sigma}$ denotes a Gaussian smoothing kernel with standard deviation $\sigma = 51$. This division is executed as a parallel matrix operation using OpenCV's matrix division to recover clean, shadow-free strokes.
 
 #### 2.1.2 Adaptive Contrast Polarity Checking
 To support both standard white paper (dark ink on a bright background) and dark chalkboards (bright chalk on a dark background) without manual buttons, the system inspects the outermost border pixels:
-$$\Gamma = \text{Border}(\text{Thresh})$$
-By calculating the expected value of these border pixels $E[\Gamma]$ after binarization, if $E[\Gamma] > 127$ (indicating a light background), it automatically inverts the image to align with the EMNIST neural network training format (white text on a black background):
+$$\Gamma = \partial\Omega$$
+where $\Omega$ represents the binarized image domain and $\partial\Omega$ denotes the border pixel region. By calculating the expected value of these border pixels $E[\Gamma]$ after binarization, if $E[\Gamma] > 127$ (indicating a light background), it automatically inverts the image to align with the EMNIST neural network training format (white text on a black background):
 $$\text{Thresh}_{\text{input}}(x, y) = 255 - \text{Thresh}(x, y)$$
 Otherwise, it preserves the polarity. This ensures automated environment adaptation.
 
@@ -58,16 +58,16 @@ Otherwise, it preserves the polarity. This ensures automated environment adaptat
 #### 2.2.1 Morphological Closing for Stroke Bridging
 Due to fine writing instruments (e.g., a 0.5mm gel pen) or thresholding constraints, strokes often contain minute fractures. Running contour detection directly on such raw binary output would shatter a single letter. Therefore, the system applies a morphological Closing Operation using a $2 \times 2$ rectangular structuring element $S$ before contour detection:
 $$\text{Closed} = (\text{Thresh} \oplus S) \ominus S$$
-This operation bridges fractures smaller than 2 pixels and fills minor internal holes, enhancing the character segmentation consistency.
+This operation bridges fractures smaller than $2$ pixels and fills minor internal holes, enhancing the character segmentation consistency.
 
 #### 2.2.2 Iterative Bounding Box Merging
-Traditional segmenters only perform a single sequential pass, which frequently misses disjoint parts of letters. This system implements an iterative bounding box merging algorithm that runs multiple rounds of a heuristic `should_merge(box1, box2)` function until the number of boxes converges.
+Traditional segmenters only perform a single sequential pass, which frequently misses disjoint parts of letters. This system implements an iterative bounding box merging algorithm that runs multiple rounds of a heuristic function until the number of boxes converges.
 Two bounding boxes $B_1(x_1, y_1, w_1, h_1)$ and $B_2(x_2, y_2, w_2, h_2)$ are merged based on the following criteria:
 1. **Nesting Check**: If one box is nested almost entirely within another (with tolerance $\delta = 3$), they are merged.
 2. **Vertical Grouping (Lowercase `i`, `j` dots)**: The horizontal overlap projection width ratio $O_x$ between $B_1$ and $B_2$ is computed. If $O_x > 0.4$, and the vertical gap $\Delta y$ satisfies:
-   $$\Delta y < \max(15, \min(h_1, h_2) \times 1.8)$$
+   $$\Delta y < \max\left(15, \min(h_1, h_2) \times 1.8\right)$$
    and the combined height does not exceed $2.2$ times the maximum height of the two boxes, they are merged.
-3. **Horizontal Merging (Broken Pen Strokes)**: When the vertical overlap ratio $O_y > 0.5$, if the horizontal gap is $\Delta x \le 3$, or if $\Delta x \le 6$ while one of the boxes is extremely narrow (width $\le 5$ pixels, signifying a stroke fragment), horizontal merging is triggered.
+3. **Horizontal Merging (Broken Pen Strokes)**: When the vertical overlap ratio $O_y > 0.5$, if the horizontal gap is $\Delta x \le 3$ pixels, or if $\Delta x \le 6$ pixels while one of the boxes is extremely narrow (width $\le 5$ pixels, signifying a stroke fragment), horizontal merging is triggered.
 
 #### 2.2.3 Center-of-Mass Alignment (EMNIST Normalization)
 To eliminate spatial shift noise, the system aligns the character based on Image Moments rather than simple bounding box centering.
@@ -75,8 +75,8 @@ We first calculate the zero-order moment $M_{00}$ and first-order moments $M_{10
 $$M_{pq} = \sum_{x} \sum_{y} x^p y^q I(x, y)$$
 The centroid coordinates are defined as:
 $$x_c = \frac{M_{10}}{M_{00}}, \quad y_c = \frac{M_{01}}{M_{00}}$$
-The glyph is resized to $20 \times 20$ pixels and placed on a standard $28 \times 28$ canvas. We then apply an affine translation vector:
-$$[\Delta x_s, \Delta y_s] = [14.0 - x_c, 14.0 - y_c]$$
+The glyph is resized to $20 \times 20$ pixels and placed on a standard $28 \times 28$ canvas. We then apply an affine translation:
+$$\begin{bmatrix} \Delta x_s \\ \Delta y_s \end{bmatrix} = \begin{bmatrix} 14.0 - x_c \\ 14.0 - y_c \end{bmatrix}$$
 shifting the center-of-mass precisely to $(14, 14)$, minimizing translation variances.
 
 ---
@@ -98,8 +98,8 @@ The network consists of three convolutional blocks followed by a dense classifie
 
 #### 2.3.2 Kaiming Normal Weight Initialization
 To prevent gradient vanishing during the early stages of deep network training, Kaiming (He) normal initialization is applied to all convolutional layers:
-$$W \sim \mathcal{N}\left(0, \sqrt{\frac{2}{\text{fan\_in}}}\right)$$
-Linear dense layers are initialized using a normal distribution with mean 0 and standard deviation 0.01, with all biases set to 0.
+$$W \sim \mathcal{N}\left(0, \sqrt{\frac{2}{n_{\text{in}}}}\right)$$
+where $n_{\text{in}}$ denotes the number of input nodes. Linear dense layers are initialized using a normal distribution with mean 0 and standard deviation 0.01, with all biases set to 0.
 
 #### 2.3.3 Test-Time Augmentation (TTA) Inference
 To defend against prediction bias caused by handwriting variations, we incorporate TTA multi-sampling.
@@ -108,8 +108,8 @@ For any single character crop $x$, the system generates 11 spatial permutations:
 * 2 affine rotation shifts: $\theta \in \{-5^{\circ}, 5^{\circ}\}$.
 
 These 11 variants are stacked as a batch and processed through the network. The final output is the averaged Softmax probability vector:
-$$P_{\text{TTA}}(y \mid x) = \frac{1}{11} \sum_{k=1}^{11} P_{\text{model}}(y \mid \text{Transform}_k(x))$$
-This test-time integration mitigates noise and yields highly stable classification boundaries.
+$$P_{\text{TTA}}(y \mid x) = \frac{1}{11} \sum_{k=1}^{11} P_{\text{model}}(y \mid T_k(x))$$
+where $T_k$ denotes the $k$-th spatial transformation. This test-time integration mitigates noise and yields stable classification boundaries.
 
 ---
 
@@ -117,8 +117,8 @@ This test-time integration mitigates noise and yields highly stable classificati
 
 #### 2.4.1 Maximum A Posteriori (MAP) Lexicon Decoder
 Confused handwritten pairs (such as `he11o` instead of `hello`) are a bottleneck for pure visual classifiers. When the system detects an alphabetical word context, it scores candidate words $W$ from a 10,000-word lexicon $D_L$:
-$$W^* = \arg\max_{W \in D_L} \sum_{i=1}^{N} \ln \left( P(c_i^{\text{lower}} \mid x_i) + P(c_i^{\text{upper}} \mid x_i \right)$$
-where $P(c_i \mid x_i)$ is the TTA-predicted Softmax probability at index $i$. Summing log-probabilities prevents float underflow and ensures stable scoring.
+$$W^* = \arg\max_{W \in D_L} \sum_{i=1}^{N} \ln \left( P(c_i^{\text{lower}} \mid x_i) + P(c_i^{\text{upper}} \mid x_i) \right)$$
+where $P(c_i \mid x_i)$ is the TTA-predicted Softmax probability at index $i$, and the superscripts $\text{lower}$ and $\text{upper}$ denote lower and upper case classes. Summing log-probabilities prevents float underflow and ensures stable scoring.
 
 #### 2.4.2 Aspect Ratio Constraint for `0` vs `O/o`
 For visually ambiguous characters like the digit `0` and letters `O/o`, the system applies a geometric prior based on the bounding box aspect ratio:
@@ -137,17 +137,15 @@ If $r_i < 0.78$ for a symmetric character, it is mapped to lowercase; otherwise,
 ### 2.5 External Integration: Baidu Handwriting OCR Reference Baseline
 
 #### 2.5.1 Rationales for Integration
-While the custom local model is highly optimized for character-level classification, benchmarking the overall text line segmentation and spell-correcting efficiency under realistic capture settings requires an objective baseline. Consequently, we integrated the Baidu Handwriting OCR API as an **external control baseline**.
-* **Comparative Evaluation**: During execution, the UI displays outputs from the local raw CNN, the lexicon corrector, and the Baidu cloud OCR concurrently. This lets the developer evaluate the performance margins and limitations of our local segmentation and correction logic compared to an industry baseline.
+While the custom local model is highly optimized for character-level classification, benchmarking the overall text line segmentation and spell-correcting efficiency under realistic capture settings requires an objective baseline. Consequently, we integrated the Baidu Handwriting OCR API as an external comparison baseline.
+* **Comparative Evaluation**: During execution, the UI displays outputs from the local raw CNN, the lexicon corrector, and the Baidu cloud OCR concurrently. This lets the developer evaluate the performance margins and limitations of our local segmentation and correction logic compared to a cloud baseline.
 * **Redundancy Fallback**: Provides a backup text source in complex environments where local character contours overlap too severely.
 
 #### 2.5.2 Implementation Mechanism
 The API client is implemented in [src/baidu_ocr.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/src/baidu_ocr.py):
-1. **OAuth 2.0 Token Caching**: Upon initialization, `BaiduOCRClient` retrieves `API Key` and `Secret Key` from system variables or local `baiduocr/key.txt`. It requests and caches a 30-day Access Token.
-2. **Image Encoding & HTTP POST**: When a recognition task starts, the system crops the designated ROI matrix and encodes it to JPEG format:
-   $$\text{Img}_{\text{JPEG}} = \text{imencode}(\text{ROI})$$
-   It transforms the bytes into a Base64 string and dispatches an asynchronous HTTP POST request to `https://aip.baidubce.com/rest/2.0/ocr/v1/handwriting` with payload `language_type=CHN_ENG` and `probability=true`.
-3. **Async UI Rendering**: The client processes the JSON response in a background thread to retrieve the recognized text segments and confidence indices, updating the comparison card asynchronously.
+1. **OAuth 2.0 Token Caching**: Upon initialization, the client retrieves credentials from local configurations, requests and caches a 30-day Access Token.
+2. **Image Encoding & HTTP POST**: When a recognition task starts, the system crops the designated ROI matrix, converts it into a Base64 string, and dispatches an HTTP POST request to the cloud handwriting endpoint.
+3. **Async UI Rendering**: The client processes the JSON response in a background thread to retrieve the recognized text segments, updating the comparison card asynchronously.
 
 ---
 
@@ -155,17 +153,17 @@ The API client is implemented in [src/baidu_ocr.py](file:///C:/Users/Liu/Pycharm
 
 ### 3.1 Loss Function & Optimization Hyperparameters
 * **Label Smoothed Cross-Entropy Loss**:
-  $$\mathcal{L}_{\text{LS}} = -(1 - \alpha) \log(p_c) - \frac{\alpha}{K} \sum_{k=1}^K \log(p_k)$$
+  $$\mathcal{L}_{\text{LS}} = -(1 - \alpha) \log p(y \mid x) - \frac{\alpha}{K} \sum_{k=1}^K \log p(k \mid x)$$
   where the smoothing factor is set to $\alpha = 0.1$, and the class count is $K = 62$. This softens target distributions to mitigate overconfidence and enhance the model's tolerance to noisy labels in handwriting EMNIST glyphs.
 * **Optimizer**: Adam optimization with base learning rate $\eta_0 = 10^{-3}$ and weight decay regularizer $10^{-4}$ to constrain weight magnitude.
-* **Scheduler & Early Stopping**: `ReduceLROnPlateau` halves the learning rate (Factor = 0.5) if validation loss plateaus for 3 consecutive epochs. Training terminates if validation accuracy fails to improve for 7 consecutive epochs.
+* **Scheduler & Early Stopping**: The scheduler halves the learning rate (Factor = 0.5) if validation loss plateaus for 3 consecutive epochs. Training terminates if validation accuracy fails to improve for 7 consecutive epochs.
 
 ### 3.2 Dataset Structure & Augmentations (get_dataloaders)
 The dataset script is defined in [src/utils.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/src/utils.py):
 * **Dataset**: EMNIST Balanced split containing 62 classes (10 digits, 26 uppercase, 26 lowercase) with 814,255 total samples.
-* **Partitioning**: 90% (628,138 samples) for training, 10% (69,794 samples) for validation, and a distinct test set of 116,323 samples.
+* **Partitioning**: $90\%$ (628,138 samples) for training, $10\%$ (69,794 samples) for validation, and a distinct test set of 116,323 samples.
 * **Academic Data Augmentations**:
-  1. **Perspective Orientation**: -90 degrees rotation and horizontal flip to reconstruct correct reading perspectives.
+  1. **Perspective Orientation**: $-90^{\circ}$ rotation and horizontal flip to reconstruct correct reading perspectives.
   2. **Random Affine**: rotation angle within $\pm 15^{\circ}$, translations up to $12\%$, scaling limits $0.8 \sim 1.2$, and shear angle up to $12^{\circ}$.
   3. **Perspective & Elastic Distortion**: perspective distortion coefficient of $0.2$ (probability $0.4$) and elastic deformation (coefficient $\alpha = 50.0$, probability $0.2$).
   4. **Noise & Blur**: Gaussian Blur (kernel size 3, probability $0.2$) and Random Erasing (masking area $2\% \sim 10\%$, probability $15\%$).
@@ -178,12 +176,12 @@ The GUI is built using Tkinter, providing a single-window dashboard.
 
 ### 4.1 Asynchronous Thread Pool Architecture
 * **Problem**: Executing model inference and network API requests directly on the GUI thread suspends the window rendering, dropping frames and causing freeze warnings.
-* **Solution**: The application detaches computations using a `ThreadPoolExecutor` workspace.
-  * **Main GUI Thread**: Invokes a $30\text{ms}$ periodic callback to read camera inputs, execute shadow subtraction and adaptive binarization, and display the webcam stream at 30 FPS.
+* **Solution**: The application detaches computations using a thread pool.
+  * **Main GUI Thread**: Invokes a $30\text{ ms}$ periodic callback to read camera inputs, execute shadow subtraction and adaptive binarization, and display the webcam stream at $30\text{ FPS}$.
   * **Background Worker Thread**: When the user presses `Space`, the ROI is cloned and sent to a worker thread for CNN + TTA inference and Baidu OCR baseline requests. Callback hooks push the results back to the GUI once done, preventing interface lags.
 
 ### 4.2 Dynamic States (Live vs. Freeze Mode)
-* **LIVE Mode**: Displays a green `LIVE` badge. Camera inputs and binarized visual maps render dynamically at 30 FPS.
+* **LIVE Mode**: Displays a green `LIVE` badge. Camera inputs and binarized visual maps render dynamically at $30\text{ FPS}$.
 * **FREEZE Mode**: Pressing `Space` triggers a transition to `FREEZE` (orange badge). The camera stream locks. Cyan bounding boxes and indices are overlayed on the static ROI.
 * **Unfreeze**: Pressing `Space`, `Enter`, `Esc`, or clicking `Resume` returns the UI to LIVE mode instantly.
 
