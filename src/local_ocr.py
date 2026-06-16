@@ -120,59 +120,114 @@ def sort_boxes_reading_order(boxes):
     return ordered
 
 
+def should_merge(box1, box2):
+    x1, y1, w1, h1 = box1
+    x2, y2, w2, h2 = box2
+    
+    # Calculate overlap and gaps
+    x1_max, x2_max = x1 + w1, x2 + w2
+    y1_max, y2_max = y1 + h1, y2 + h2
+    
+    x_overlap = max(0, min(x1_max, x2_max) - max(x1, x2))
+    y_overlap = max(0, min(y1_max, y2_max) - max(y1, y2))
+    
+    # Gaps (0 if they overlap)
+    x_gap = max(0, max(x1, x2) - min(x1_max, x2_max))
+    y_gap = max(0, max(y1, y2) - min(y1_max, y2_max))
+    
+    min_w = min(w1, w2)
+    max_w = max(w1, w2)
+    min_h = min(h1, h2)
+    max_h = max(h1, h2)
+    
+    x_overlap_ratio = x_overlap / float(min_w) if min_w > 0 else 0
+    y_overlap_ratio = y_overlap / float(min_h) if min_h > 0 else 0
+    
+    # 1. Nested/Containing relationship (one box is inside another)
+    # Include some tolerance (3 pixels)
+    is_nested = (x1 >= x2 - 3 and x1_max <= x2_max + 3 and y1 >= y2 - 3 and y1_max <= y2_max + 3) or \
+                (x2 >= x1 - 3 and x2_max <= x1_max + 3 and y2 >= y1 - 3 and y2_max <= y1_max + 3)
+    if is_nested:
+        return True
+        
+    # 2. Vertical alignment (e.g., dot of 'i' or 'j', or vertical parts of broken letters)
+    # High horizontal overlap (X overlap ratio > 0.4)
+    if x_overlap_ratio > 0.4 or (x1 >= x2 - 2 and x1_max <= x2_max + 2) or (x2 >= x1 - 2 and x2_max <= x1_max + 2):
+        combined_h = max(y1_max, y2_max) - min(y1, y2)
+        # Check if they are vertically close
+        # Combined height should not exceed 2.2 * max_h to avoid merging different text lines
+        if y_gap < max(15, min_h * 1.8) and combined_h <= max_h * 2.2:
+            return True
+            
+    # 3. Horizontal splitting (broken stroke parts of the same letter side-by-side)
+    # They should overlap vertically (same line)
+    if y_overlap_ratio > 0.5:
+        # If they actually overlap horizontally (x_overlap > 0), they must be part of the same letter
+        if x_overlap > 0:
+            return True
+        # If they are side-by-side:
+        # - Extremely close: gap <= 3 pixels
+        if x_gap <= 3:
+            return True
+        # - Close, and one of them is very thin/small (likely a broken stroke fragment, not a full character)
+        if x_gap <= 6 and (min_w <= 5 or (min_w * min_h) < 120):
+            return True
+            
+    # 4. Diagonal close proximity for tiny fragments
+    if x_gap <= 2 and y_gap <= 2 and (min_w * min_h < 100 or max_w * max_h < 150):
+        return True
+        
+    return False
+
+
 def merge_bounding_boxes(raw_boxes, box_size):
     if not raw_boxes:
         return []
         
-    raw_boxes.sort(key=lambda b: b[0])
-    
-    merged_boxes = []
-    for box in raw_boxes:
-        if not merged_boxes:
-            merged_boxes.append(box)
-            continue
+    # Iterative merge algorithm
+    current_boxes = list(raw_boxes)
+    while True:
+        merged_any = False
+        n = len(current_boxes)
+        used = [False] * n
+        next_boxes = []
+        
+        for i in range(n):
+            if used[i]:
+                continue
+            box1 = current_boxes[i]
+            for j in range(i + 1, n):
+                if used[j]:
+                    continue
+                box2 = current_boxes[j]
+                
+                if should_merge(box1, box2):
+                    # Merge them
+                    x1, y1, w1, h1 = box1
+                    x2, y2, w2, h2 = box2
+                    new_x = min(x1, x2)
+                    new_y = min(y1, y2)
+                    new_w = max(x1 + w1, x2 + w2) - new_x
+                    new_h = max(y1 + h1, y2 + h2) - new_y
+                    box1 = (new_x, new_y, new_w, new_h)
+                    used[j] = True
+                    merged_any = True
             
-        last_box = merged_boxes[-1]
-        lx, ly, lw, lh = last_box
-        x, y, w, h = box
-        
-        x_overlap = max(0, min(lx + lw, x + w) - max(lx, x))
-        x_overlap_ratio = x_overlap / float(min(lw, w))
-        
-        if ly < y:
-            y_gap = y - (ly + lh)
-        else:
-            y_gap = ly - (y + h)
+            next_boxes.append(box1)
+            used[i] = True
             
-        combined_h = max(ly + lh, y + h) - min(ly, y)
-        max_allowed_h = max(lh, h) * 1.55
-        is_vertical_aligned = (
-            x_overlap_ratio > 0.25
-            or (x >= lx and x + w <= lx + lw)
-            or (lx >= x and lx + lw <= x + w)
-        ) and (y_gap < max(10, min(lh, h) * 1.4)) and (combined_h <= max_allowed_h)
-        
-        x_gap = x - (lx + lw)
-        is_horizontal_near = (x_gap < 5) and (abs(ly - y) < max(lh, h) * 0.35)
-        
-        is_nested = (x >= lx - 2 and x + w <= lx + lw + 2 and y >= ly - 2 and y + h <= ly + lh + 2) or \
-                    (lx >= x - 2 and lx + lw <= x + w + 2 and ly >= y - 2 and ly + lh <= y + h + 2)
-                    
-        if is_vertical_aligned or is_horizontal_near or is_nested:
-            new_x = min(lx, x)
-            new_y = min(ly, y)
-            new_w = max(lx + lw, x + w) - new_x
-            new_h = max(ly + lh, y + h) - new_y
-            merged_boxes[-1] = (new_x, new_y, new_w, new_h)
-        else:
-            merged_boxes.append(box)
+        current_boxes = next_boxes
+        if not merged_any:
+            break
             
+    # Filter and sort
     valid_boxes = []
-    for (x, y, w, h) in merged_boxes:
+    for (x, y, w, h) in current_boxes:
         if w >= 5 and h >= 8 and (w * h) >= 80:
             valid_boxes.append((x, y, w, h))
             
     return sort_boxes_reading_order(valid_boxes)
+
 
 
 class LocalOCRResult:
@@ -229,9 +284,9 @@ class LocalOCRRecognizer:
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray_no_shadow)
         
-        blur = cv2.GaussianBlur(cv2.medianBlur(enhanced, 5), (3, 3), 0)
+        blur = cv2.GaussianBlur(cv2.medianBlur(enhanced, 3), (3, 3), 0)
         thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY, 11, 5)
+                                       cv2.THRESH_BINARY, 11, 4)
         
         # 自动对比度极性检测：统计图像边缘像素的分布
         # 取图像四周最外层的边缘像素
@@ -246,7 +301,11 @@ class LocalOCRRecognizer:
         if np.mean(border_pixels) > 127:
             thresh = 255 - thresh
                                        
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # 使用形态学闭运算连接断裂的笔画以辅助寻找轮廓
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         raw_boxes = []
         for cnt in contours:
