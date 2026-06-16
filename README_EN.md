@@ -42,25 +42,33 @@ Under physical webcam capture conditions, hands or phones often cast shadows, ca
 
 The mathematical model is formulated as:
 Let $I(x, y)$ denote the intensity of the input grayscale image at coordinates $(x, y)$. The background ambient illumination is estimated using a Gaussian smoothing kernel $G_{\sigma}$ with standard deviation $\sigma = 51$ as $B(x, y) = (G_{\sigma} \ast I)(x, y)$。The shadow-compensated normalized image intensity $I'(x, y)$ is defined as:
+
 $$
 I'(x, y) = \min \left( \frac{I(x, y)}{B(x, y)} \times 255, 255 \right)
 $$
+
 This division is executed as a parallel matrix operation using OpenCV to recover clean, shadow-free strokes.
 
 #### 2.1.2 Adaptive Contrast Polarity Checking
 To support both standard white paper (dark ink on a bright background) and dark chalkboards (bright chalk on a dark background) without manual buttons, the system extracts boundary pixels as background samples before character segmentation.
 Let $\Omega$ represent the image domain and $\partial\Omega$ denote the outermost border region. The system computes the expected background intensity over the border region on the binarized image $T(x, y)$:
+
 $$
 \mu_{\text{bg}} = E_{(x, y) \in \partial\Omega}[T(x, y)]
 $$
+
 If $\mu_{\text{bg}} > 127$ (indicating a light background), it automatically inverts the image to align with the EMNIST neural network training format (white text on a black background):
+
 $$
 T'(x, y) = 255 - T(x, y)
 $$
+
 Otherwise, it preserves the polarity:
+
 $$
 T'(x, y) = T(x, y)
 $$
+
 This ensures automated environment adaptation.
 
 ---
@@ -69,9 +77,11 @@ This ensures automated environment adaptation.
 
 #### 2.2.1 Morphological Closing for Stroke Bridging
 Due to fine writing instruments or thresholding constraints, strokes often contain minute fractures. Running contour detection directly on such raw binary output would shatter a single letter. Therefore, the system applies a morphological Closing Operation on the polarity-corrected binary image $T'$ using a $2 \times 2$ rectangular structuring element $S$ before contour detection:
+
 $$
 T_c = (T' \oplus S) \ominus S
 $$
+
 where $\oplus$ and $\ominus$ denote dilation and erosion, respectively. This operation bridges fractures smaller than $2$ pixels and fills minor internal holes, enhancing character segmentation consistency.
 
 #### 2.2.2 Iterative Bounding Box Merging
@@ -79,26 +89,34 @@ Traditional segmenters only perform a single sequential pass, which frequently m
 Let two bounding boxes be $B_1(x_1, y_1, w_1, h_1)$ and $B_2(x_2, y_2, w_2, h_2)$. They are merged based on the following criteria:
 1. **Nesting Check**: If one box is nested almost entirely within another (with tolerance $\delta = 3$), they are merged.
 2. **Vertical Grouping (Lowercase `i`, `j` dots)**: The horizontal overlap projection width ratio $O_x$ between $B_1$ and $B_2$ is computed. If $O_x > 0.4$, and the vertical gap $\Delta y$ satisfies:
+
    $$
    \Delta y < \max\left(15, 1.8 \cdot \min(h_1, h_2)\right)
    $$
+
    and the combined height does not exceed $2.2$ times the maximum height of the two boxes, they are merged.
 3. **Horizontal Merging (Broken Pen Strokes)**: When the vertical overlap ratio $O_y > 0.5$, if the horizontal gap is $\Delta x \le 3$ pixels, or if $\Delta x \le 6$ pixels while one of the boxes is extremely narrow (width $\le 5$ pixels, signifying a stroke fragment), horizontal merging is triggered.
 
 #### 2.2.3 Center-of-Mass Alignment (EMNIST Normalization)
 To eliminate spatial shift noise, the system aligns the character based on Image Moments rather than simple bounding box centering.
 We first calculate the zero-order moment $M_{00}$ and first-order moments $M_{10}, M_{01}$ of the binary character crop $I(x, y) \in \{0, 1\}$:
+
 $$
 M_{pq} = \sum_{x} \sum_{y} x^p y^q I(x, y)
 $$
+
 The centroid coordinates $(x_c, y_c)$ are defined as:
+
 $$
 x_c = \frac{M_{10}}{M_{00}}, \quad y_c = \frac{M_{01}}{M_{00}}
 $$
+
 The glyph is resized to $20 \times 20$ pixels and placed on a standard $28 \times 28$ canvas. We then apply an affine translation $(\Delta x, \Delta y)$:
+
 $$
 \begin{bmatrix} \Delta x \\ \Delta y \end{bmatrix} = \begin{bmatrix} 14.0 - x_c \\ 14.0 - y_c \end{bmatrix}
 $$
+
 shifting the center-of-mass precisely to $(14, 14)$, minimizing translation variances.
 
 ---
@@ -120,18 +138,22 @@ The network consists of three convolutional blocks followed by a dense classifie
 
 #### 2.3.2 Kaiming Normal Weight Initialization
 To prevent gradient vanishing during the early stages of deep network training, Kaiming (He) normal initialization is applied to all convolutional layers:
+
 $$
 W \sim \mathcal{N}\left(0, \sigma^2\right), \quad \sigma = \sqrt{\frac{2}{n_{\text{in}}}}
 $$
+
 where $n_{\text{in}}$ denotes the number of input nodes. Linear dense layers are initialized using a normal distribution with mean 0 and standard deviation 0.01, with all biases set to 0.
 
 #### 2.3.3 Test-Time Augmentation (TTA) Inference
 To defend against prediction bias caused by handwriting variations, we incorporate TTA multi-sampling.
 For any single character crop $x$, the system generates 11 spatial permutations. Let $T_k(x)$ ($k=1,\dots,11$) be the perturbed image under the $k$-th affine transformation (including 9 translations and 2 rotations).
 These 11 variants are stacked as a batch and processed through the network. The final output is the averaged Softmax probability vector:
+
 $$
 P(y \mid x) = \frac{1}{11} \sum_{k=1}^{11} P_{\theta}(y \mid T_k(x))
 $$
+
 where $P_{\theta}(y \mid \cdot)$ represents the network's prediction probability distribution. This test-time integration mitigates noise and yields stable classification boundaries.
 
 ---
@@ -140,26 +162,32 @@ where $P_{\theta}(y \mid \cdot)$ represents the network's prediction probability
 
 #### 2.4.1 Maximum A Posteriori (MAP) Lexicon Decoder
 Confused handwritten pairs (such as `he11o` instead of `hello`) are a bottleneck for pure visual classifiers. When the system detects an alphabetical word context, it scores candidate words $W$ from a 10,000-word lexicon $D_L$ to find the optimal candidate $W^{\star}$:
+
 $$
 W^{\star} = \arg\max_{W \in D_L} \sum_{i=1}^{N} \ln \left( P(c_{i,\mathrm{lower}} \mid x_i) + P(c_{i,\mathrm{upper}} \mid x_i) \right)
 $$
+
 where $N$ is the word length, $x_i$ is the $i$-th segmented character image, and $c_{i,\mathrm{lower}}$ and $c_{i,\mathrm{upper}}$ denote the lowercase and uppercase candidate classes for the character at index $i$ in word $W$. Summing log-probabilities prevents float underflow and ensures stable scoring.
 
 #### 2.4.2 Aspect Ratio Constraint for `0` vs `O/o`
 For visually ambiguous characters like the digit `0` and letters `O/o`, the system applies a geometric prior based on the bounding box aspect ratio.
 Let the width and height of the $i$-th character bounding box be $w_i$ and $h_i$, respectively. The aspect ratio $R_i$ is defined as:
+
 $$
 R_i = \frac{w_i}{h_i}
 $$
+
 Since hand-written zeros are statistically narrower than the letter O:
 * If $R_i < 0.52$, we reward the probability of the digit `0` by multiplying it by $1.5$, and penalize `O` and `o` by multiplying their probabilities by $0.05$.
 * If $R_i \ge 0.52$, the system shifts its confidence toward `O/o`.
 
 #### 2.4.3 Intra-Line Relative Height Scaling for Casing
 Case-symmetric letters (e.g., `C/c`, `O/o`, `S/s`, `Z/z` etc.) are disambiguated by computing the relative height $r_i$ of the glyph bounding box:
+
 $$
 r_i = \frac{h_i}{\max_{j=1}^N h_j}
 $$
+
 If $r_i < 0.78$ for a symmetric character, it is mapped to lowercase; otherwise, it remains uppercase.
 
 ---
@@ -184,9 +212,11 @@ The API client is implemented in [src/baidu_ocr.py](file:///C:/Users/Liu/Pycharm
 ### 3.1 Loss Function & Optimization Hyperparameters
 * **Label Smoothed Cross-Entropy Loss**:
   Let $y$ denote the true label, and $p(\cdot \mid x)$ be the predicted probability distribution for input $x$. With smoothing factor $\alpha = 0.1$ and class count $K = 62$, the label smoothed cross-entropy loss is defined as:
+
   $$
   L_{\mathrm{smooth}} = -(1 - \alpha) \log p(y \mid x) - \frac{\alpha}{K} \sum_{k=1}^K \log p(k \mid x)
   $$
+
   This softens target distributions to mitigate overconfidence and enhance the model's tolerance to noisy labels in handwriting EMNIST glyphs.
 * **Optimizer**: Adam optimization with base learning rate $\eta_0 = 10^{-3}$ and weight decay regularizer $10^{-4}$ to constrain weight magnitude.
 * **Scheduler & Early Stopping**: The scheduler halves the learning rate (Factor = 0.5) if validation loss plateaus for 3 consecutive epochs. Training terminates if validation accuracy fails to improve for 7 consecutive epochs.
