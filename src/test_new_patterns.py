@@ -4,7 +4,9 @@ import torch
 import numpy as np
 
 # Add project root to path
-sys.path.append(r"C:\Users\Liu\PycharmProjects\PythonProject3 - 副本")
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
 from src.corrector import HandwrittenCorrector, label_map, char_to_idx
 
