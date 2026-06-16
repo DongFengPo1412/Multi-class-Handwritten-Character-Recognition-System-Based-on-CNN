@@ -120,6 +120,91 @@ def sort_boxes_reading_order(boxes):
     return ordered
 
 
+def merge_close_runs(runs, max_gap):
+    if not runs:
+        return []
+
+    merged = [runs[0]]
+    for start, end in runs[1:]:
+        last_start, last_end = merged[-1]
+        if start - last_end - 1 <= max_gap:
+            merged[-1] = (last_start, end)
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def projection_runs(mask):
+    runs = []
+    start = None
+    for idx, value in enumerate(mask):
+        if value and start is None:
+            start = idx
+        elif not value and start is not None:
+            runs.append((start, idx - 1))
+            start = None
+    if start is not None:
+        runs.append((start, len(mask) - 1))
+    return runs
+
+
+def find_text_line_bands(binary_img):
+    h, w = binary_img.shape
+    if h == 0 or w == 0:
+        return []
+
+    row_projection = np.sum(binary_img > 0, axis=1).astype(np.float32)
+    if row_projection.max() <= 0:
+        return []
+
+    kernel_size = max(3, min(15, int(h * 0.025) | 1))
+    kernel = np.ones(kernel_size, dtype=np.float32) / float(kernel_size)
+    smooth = np.convolve(row_projection, kernel, mode="same")
+    active_threshold = max(2.0, min(w * 0.015, smooth.max() * 0.12))
+
+    runs = projection_runs(smooth > active_threshold)
+    runs = merge_close_runs(runs, max_gap=max(2, int(h * 0.01)))
+
+    bands = []
+    pad = max(2, int(h * 0.006))
+    for start, end in runs:
+        y1 = max(0, start - pad)
+        y2 = min(h - 1, end + pad)
+        band = binary_img[y1:y2 + 1, :]
+        rows = np.where(np.sum(band > 0, axis=1) > 0)[0]
+        cols = np.where(np.sum(band > 0, axis=0) > 0)[0]
+        if len(rows) == 0 or len(cols) == 0:
+            continue
+        top = y1 + int(rows[0])
+        bottom = y1 + int(rows[-1])
+        if bottom - top + 1 >= 8 and len(cols) >= 4:
+            bands.append((max(0, top - 1), min(h - 1, bottom + 1)))
+
+    if not bands:
+        return [(0, h - 1)]
+    return bands
+
+
+def contour_boxes_in_band(binary_img, y1, y2, box_size):
+    band = binary_img[y1:y2 + 1, :]
+    if band.size == 0:
+        return []
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    closed = cv2.morphologyEx(band, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    boxes = []
+    for cnt in contours:
+        x, local_y, w, h = cv2.boundingRect(cnt)
+        area = cv2.contourArea(cnt)
+        y = y1 + local_y
+        margin_ok = 2 < x < box_size - 2 and 2 < y < box_size - 2
+        if 15 < area < 30000 and margin_ok:
+            boxes.append((x, y, w, h))
+    return boxes
+
+
 def split_wide_box(binary_img, box):
     x, y, w, h = box
     if w <= 0 or h <= 0:
@@ -330,6 +415,15 @@ def merge_bounding_boxes(raw_boxes, box_size, binary_img=None):
 
 
 def segment_character_boxes(binary_img, raw_boxes, box_size):
+    line_boxes = []
+    for y1, y2 in find_text_line_bands(binary_img):
+        raw_line_boxes = contour_boxes_in_band(binary_img, y1, y2, box_size)
+        if raw_line_boxes:
+            line_boxes.extend(merge_bounding_boxes(raw_line_boxes, box_size, binary_img=binary_img))
+
+    if line_boxes:
+        return sort_boxes_reading_order(line_boxes)
+
     return merge_bounding_boxes(raw_boxes, box_size, binary_img=binary_img)
 
 

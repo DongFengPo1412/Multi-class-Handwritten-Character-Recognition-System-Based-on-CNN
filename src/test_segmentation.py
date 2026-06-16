@@ -40,7 +40,23 @@ def test_multiline_reading_order():
     ]
 
 
+def test_single_large_contour_is_split_into_lines():
+    binary = np.zeros((150, 120), dtype=np.uint8)
+    y_positions = [10, 43, 76, 109]
+    for y in y_positions:
+        for x in [10, 32, 54, 76]:
+            cv2.rectangle(binary, (x, y), (x + 9, y + 19), 255, -1)
+
+    raw_boxes = [(8, 8, 88, 124)]
+    boxes = segment_character_boxes(binary, raw_boxes, box_size=150)
+    lines = group_boxes_by_reading_lines(boxes)
+
+    assert len(lines) == 4, f"expected 4 text lines, got {len(lines)}: {lines}"
+    assert all(len(line) == 4 for line in lines), f"expected 4 chars per line, got {lines}"
+
+
 if __name__ == "__main__":
     test_wide_connected_box_splitting()
     test_multiline_reading_order()
+    test_single_large_contour_is_split_into_lines()
     print("[+] segmentation tests passed")
