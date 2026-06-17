@@ -468,14 +468,13 @@ class OCRDesktopApp:
                 if self.current_roi is not None:
                     roi = self.current_roi
                     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                     bg = cv2.GaussianBlur(gray, (51, 51), 0)
                     gray_no_shadow = cv2.divide(gray, bg, scale=255)
-                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                     enhanced = clahe.apply(gray_no_shadow)
                     blur = cv2.GaussianBlur(cv2.medianBlur(enhanced, 5), (3, 3), 0)
                     thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                    cv2.THRESH_BINARY, 11, 5)
-                    h_t, w_t = thresh.shape
                     border_pixels = np.concatenate([
                         thresh[0, :], thresh[-1, :], thresh[:, 0], thresh[:, -1]
                     ])
@@ -484,6 +483,7 @@ class OCRDesktopApp:
 
                     self.preview_source = 255 - thresh
                     self.render_preview()
+
             else:
                 warning_msg = "[Warning] Failed to read frame from camera. Check camera connection or index."
                 print(warning_msg)

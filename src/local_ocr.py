@@ -476,29 +476,39 @@ class LocalOCRRecognizer:
         box_size = roi.shape[0]
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         
-        bg = cv2.GaussianBlur(gray, (51, 51), 0)
-        gray_no_shadow = cv2.divide(gray, bg, scale=255)
-        
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(gray_no_shadow)
-        
-        blur = cv2.GaussianBlur(cv2.medianBlur(enhanced, 3), (3, 3), 0)
-        thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY, 11, 4)
-        
-        # 自动对比度极性检测：统计图像边缘像素的分布
-        # 取图像四周最外层的边缘像素
-        h_t, w_t = thresh.shape
-        border_pixels = np.concatenate([
-            thresh[0, :],          # 上边界
-            thresh[-1, :],         # 下边界
-            thresh[:, 0],          # 左边界
-            thresh[:, -1]          # 右边界
+        # 检测原始图像边缘亮度，判断是否为暗背景（如黑板、墨绿色板）
+        # 使用灰度中值127作为分界：< 127 为暗背景，>= 127 为亮背景（白纸等）
+        h_g, w_g = gray.shape
+        border_gray = np.concatenate([
+            gray[0, :], gray[-1, :], gray[:, 0], gray[:, -1]
         ])
-        # 如果边缘像素中白色(255)占了大多数，说明背景是亮色(如白纸)，我们需要反色让文字变白背景变黑
-        if np.mean(border_pixels) > 127:
-            thresh = 255 - thresh
-                                       
+        is_dark_background = np.mean(border_gray) < 127  # 暗背景（黑板/墨绿板/深色背景）
+
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        if is_dark_background:
+            # 暗背景场景（黑板/墨绿板 + 白粉笔）处理流程：
+            # - 跳过 divide 阴影去除（该算法会把暗背景错误放大）
+            # - 使用 Otsu 全局阈值：暗背景(低灰度) vs 亮字符(高灰度) 构成清晰双峰分布
+            # - Otsu 输出：背景=黑色(0)，字符=白色(255)，与 EMNIST 格式一致，无需极性检测
+            blur = cv2.GaussianBlur(cv2.medianBlur(gray, 3), (3, 3), 0)
+            _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        else:
+            # 亮背景场景（白纸/浅色背景 + 深色墨水）处理流程：
+            # - 使用背景光差分算法去除不均匀光照阴影
+            # - 使用自适应阈值处理局部光照差异
+            # - 极性检测：如果边缘像素偏白（说明是白纸背景），则反色使字符变白、背景变黑
+            bg = cv2.GaussianBlur(gray, (51, 51), 0)
+            gray_no_shadow = cv2.divide(gray, bg, scale=255)
+            enhanced = clahe.apply(gray_no_shadow)
+            blur = cv2.GaussianBlur(cv2.medianBlur(enhanced, 3), (3, 3), 0)
+            thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                           cv2.THRESH_BINARY, 11, 4)
+            border_pixels = np.concatenate([
+                thresh[0, :], thresh[-1, :], thresh[:, 0], thresh[:, -1]
+            ])
+            if np.mean(border_pixels) > 127:
+                thresh = 255 - thresh
+
         # 使用形态学闭运算连接断裂的笔画以辅助寻找轮廓
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
         closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
