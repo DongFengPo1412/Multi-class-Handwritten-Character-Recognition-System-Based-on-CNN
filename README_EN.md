@@ -90,8 +90,12 @@ Let two bounding boxes be $B_1(x_1, y_1, w_1, h_1)$ and $B_2(x_2, y_2, w_2, h_2)
 1. **Nesting Check**: If one box is nested almost entirely within another (with tolerance $\delta = 3$ ), they are merged.
 2. **Vertical Grouping (Lowercase `i`, `j` dots)**: The horizontal overlap projection width ratio $O_x$ between $B_1$ and $B_2$ is computed. If $O_x > 0.4$ , and the vertical gap $\Delta y$ satisfies: $\Delta y < \max\left(15, 1.8 \cdot \min(h_1, h_2)\right)$ , and the combined height does not exceed $2.2$ times the maximum height of the two boxes, they are merged.
 3. **Horizontal Merging (Broken Pen Strokes)**: When the vertical overlap ratio $O_y > 0.5$, if the horizontal gap is $\Delta x \le 3$ pixels, or if $\Delta x \le 6$ pixels while one of the boxes is extremely narrow (width $\le 5$ pixels, signifying a stroke fragment), horizontal merging is triggered.
+4. **Diagonal Fragment Merging**: If two bounding boxes are diagonally adjacent and extremely close, satisfying $\Delta x \le 2$ pixels and $\Delta y \le 2$ pixels, and have small multiplication areas ($\min(w_1 \cdot h_1, w_2 \cdot h_2) < 100$ and $\max(w_1 \cdot h_1, w_2 \cdot h_2) < 150$), they are merged to eliminate tiny boundary stroke noise.
 
-#### 2.2.3 Center-of-Mass Alignment (EMNIST Normalization)
+#### 2.2.3 Connected Character Splitting via Projection Valleys (Wide Box Splitting)
+In cursive writing, characters often touch (e.g., "oo" merges into a single long box, distorting the aspect ratio). After box merging, the system runs an adaptive box splitting algorithm on wide boxes (aspect ratio $w/h \ge 1.18$ and width $w \ge 18$ pixels). It computes the vertical projection profile $H(x) = \sum_y I(x, y)$, searches for local valleys (minima) in the middle region, and splits the box vertically at the valley when the density drops below an adaptive threshold. This resolves recognition confusion caused by connected cursive strokes.
+
+#### 2.2.4 Center-of-Mass Alignment (EMNIST Normalization)
 To eliminate spatial shift noise, the system aligns the character based on Image Moments rather than simple bounding box centering.
 We first calculate the zero-order moment $M_{00}$ and first-order moments $M_{10}, M_{01}$ of the binary character crop $I(x, y) \in \{0, 1\}$ :
 
@@ -183,6 +187,15 @@ r_i = \frac{h_i}{\max_{j=1}^N h_j}
 $$
 
 If $r_i < 0.78$ for a symmetric character, it is mapped to lowercase; otherwise, it remains uppercase.
+
+#### 2.4.4 Structured Pattern Matching and Masking
+In real-world text recognition, input sequences often follow specific syntactic constraints (e.g., 11-digit mobile numbers, 18-digit ID cards, or 7-8 character license plates). To avoid formatting errors caused by visual character confusions, the post-processing module features dynamic pattern matching and masking. First, the system analyzes the digit-to-letter ratio of the raw CNN output sequence to determine the matching template:
+* **ID Card Pattern**: Triggered if sequence length is 18 and contains at least 13 digits. Applies a probability mask to the first 17 positions to set non-digit class probabilities to 0, and restricts the 18th position to digits and 'X'.
+* **Phone Number Pattern**: Triggered if sequence length is 11, starts with a '1'-like shape, and contains at least 8 digits. Forces the first digit to be '1' and masks all alphabet classes for the remaining positions.
+* **License Plate Pattern**: Triggered if sequence length is 7 or 8, starts with a provincial placeholder, followed by a letter, and has at least 4 digits. It enforces uppercase letters (excluding ambiguous 'I' and 'O') and digits at specified positions.
+* **Numeric/Alphabetic Modes**: Enforces pure digit decoding if digit percentage is $\ge 80\%$, or triggers lexicon-assisted correction if letter percentage is $\ge 60\%$.
+
+By overriding unfeasible classifications at runtime, this masking technique significantly increases the robustness of structural text decoding.
 
 ---
 
