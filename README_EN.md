@@ -41,7 +41,7 @@ graph TD
 Under physical webcam capture conditions, hands or phones often cast shadows, causing large black blotches when applying standard thresholding. The system handles this via a background illumination subtraction algorithm. It first estimates the local background ambient illumination using a large Gaussian smoothing kernel, and then compensates for shadows via matrix division.
 
 The mathematical model is formulated as:
-Let $I(x, y)$ denote the intensity of the input grayscale image at coordinates $(x, y)$. The background ambient illumination is estimated using a Gaussian smoothing kernel $G_{\sigma}$ with standard deviation $\sigma = 51$ as $B(x, y) = (G_{\sigma} \ast I)(x, y)$。The shadow-compensated normalized image intensity $I'(x, y)$ is defined as:
+Let $I(x, y)$ denote the intensity of the input grayscale image at coordinates $(x, y)$. The background ambient illumination is estimated using a Gaussian smoothing filter with kernel size $51 \times 51$ (automatically calculated standard deviation $\sigma \approx 8.0$) as $B(x, y) = (\text{GaussianBlur}(I, (51, 51))) (x, y)$. The shadow-compensated normalized image intensity $I'(x, y)$ is defined as:
 
 $$
 I'(x, y) = \min \left( \frac{I(x, y)}{B(x, y)} \times 255, 255 \right)
@@ -213,7 +213,7 @@ The API client is implemented in [src/baidu_ocr.py](file:///C:/Users/Liu/Pycharm
 
 ### 3.2 Dataset Structure & Augmentations (get_dataloaders)
 The dataset script is defined in [src/utils.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/src/utils.py):
-* **Dataset**: EMNIST Balanced split containing 62 classes (10 digits, 26 uppercase, 26 lowercase) with 814,255 total samples.
+* **Dataset**: EMNIST ByClass split containing 62 classes (10 digits, 26 uppercase, 26 lowercase) with 814,255 total samples (Note: Due to the natural class imbalance in ByClass, the system integrates multi-dimensional data augmentations and post-processing lexicon/geometric corrections).
 * **Partitioning**: $90\%$ (628,138 samples) for training, $10\%$ (69,794 samples) for validation, and a distinct test set of 116,323 samples.
 * **Academic Data Augmentations**:
   1. **Perspective Orientation**: $-90^{\circ}$ rotation and horizontal flip to reconstruct correct reading perspectives.
