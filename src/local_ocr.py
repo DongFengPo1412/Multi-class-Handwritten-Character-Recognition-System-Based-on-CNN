@@ -78,11 +78,76 @@ def predict_with_tta(model, img_tensor, device):
     return probs.mean(dim=0, keepdim=True)
 
 
+def box_center_x(box):
+    return box[0] + box[2] / 2.0
+
+
 def box_center_y(box):
     return box[1] + box[3] / 2.0
 
 
 def group_boxes_by_reading_lines(boxes):
+    if not boxes:
+        return []
+
+    # 1. 自适应排版检测（检测是否为竖排书写）
+    is_vertical = False
+    if len(boxes) >= 3:
+        v_votes = 0
+        h_votes = 0
+        for i, b1 in enumerate(boxes):
+            cx1 = b1[0] + b1[2] / 2.0
+            cy1 = b1[1] + b1[3] / 2.0
+            nn = None
+            min_d = float('inf')
+            for j, b2 in enumerate(boxes):
+                if i == j:
+                    continue
+                cx2 = b2[0] + b2[2] / 2.0
+                cy2 = b2[1] + b2[3] / 2.0
+                d = (cx1 - cx2)**2 + (cy1 - cy2)**2
+                if d < min_d:
+                    min_d = d
+                    nn = (cx2, cy2)
+            if nn is not None:
+                dx = abs(cx1 - nn[0])
+                dy = abs(cy1 - nn[1])
+                if dy > dx * 1.2:
+                    v_votes += 1
+                else:
+                    h_votes += 1
+        is_vertical = v_votes > h_votes
+
+    # 2. 竖排排版逻辑 (Column-by-column)
+    if is_vertical:
+        widths = [w for _, _, w, _ in boxes]
+        median_w = float(np.median(widths)) if widths else 1.0
+        col_threshold = max(18.0, median_w * 0.65)
+        columns = []
+
+        for box in sorted(boxes, key=box_center_x):
+            cx = box_center_x(box)
+            target_col = None
+            best_distance = None
+            for col in columns:
+                distance = abs(cx - col["center"])
+                if distance <= col_threshold and (best_distance is None or distance < best_distance):
+                    target_col = col
+                    best_distance = distance
+
+            if target_col is None:
+                columns.append({"center": cx, "boxes": [box]})
+            else:
+                target_col["boxes"].append(box)
+                target_col["center"] = float(np.mean([box_center_x(b) for b in target_col["boxes"]]))
+
+        sorted_cols = sorted(columns, key=lambda item: item["center"])
+        return [
+            sorted(col["boxes"], key=lambda b: b[1])
+            for col in sorted_cols
+        ]
+
+    # 3. 横排排版逻辑 (Row-by-row, 默认)
     if not boxes:
         return []
 
@@ -190,9 +255,13 @@ def contour_boxes_in_band(binary_img, y1, y2, box_size):
     if band.size == 0:
         return []
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-    closed = cv2.morphologyEx(band, cv2.MORPH_CLOSE, kernel)
-    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    closed = cv2.morphologyEx(band, cv2.MORPH_CLOSE, kernel_close)
+    
+    # 增加形态学开运算，直接在底层剔除微小毛刺和噪点
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    cleaned = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_open)
+    contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     boxes = []
     for cnt in contours:
@@ -399,9 +468,15 @@ def merge_bounding_boxes(raw_boxes, box_size, binary_img=None):
             break
             
     # Filter and sort
+    areas = [w * h for (x, y, w, h) in current_boxes]
+    median_area = float(np.median(areas)) if areas else 0.0
+    
+    # 动态面积阈值：面积必须大于中位数的 15%（且不低于 36 像素，保留小数点等微小符号）
+    min_area_thresh = max(36.0, median_area * 0.15)
+    
     valid_boxes = []
     for (x, y, w, h) in current_boxes:
-        if w >= 5 and h >= 8 and (w * h) >= 80:
+        if w >= 4 and h >= 5 and (w * h) >= min_area_thresh:
             valid_boxes.append((x, y, w, h))
 
     if binary_img is not None:
@@ -497,12 +572,20 @@ class LocalOCRRecognizer:
             # - 使用背景光差分算法去除不均匀光照阴影
             # - 使用自适应阈值处理局部光照差异
             # - 极性检测：如果边缘像素偏白（说明是白纸背景），则反色使字符变白、背景变黑
-            bg = cv2.GaussianBlur(gray, (51, 51), 0)
+            h_img, w_img = gray.shape
+            # 自适应高斯去阴影核大小（约为最大边的 8%）
+            k_size = int(max(h_img, w_img) * 0.08) | 1
+            bg = cv2.GaussianBlur(gray, (k_size, k_size), 0)
             gray_no_shadow = cv2.divide(gray, bg, scale=255)
             enhanced = clahe.apply(gray_no_shadow)
             blur = cv2.GaussianBlur(cv2.medianBlur(enhanced, 3), (3, 3), 0)
+            
+            # 自适应二值化窗口大小（约为最大边的 1.5%，且不小于 3）
+            block_size = int(max(h_img, w_img) * 0.015) | 1
+            if block_size < 3:
+                block_size = 3
             thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                           cv2.THRESH_BINARY, 11, 4)
+                                           cv2.THRESH_BINARY, block_size, 4)
             border_pixels = np.concatenate([
                 thresh[0, :], thresh[-1, :], thresh[:, 0], thresh[:, -1]
             ])
@@ -540,7 +623,11 @@ class LocalOCRRecognizer:
                 boxes=[]
             )
             
+        # 计算全局高度基线，防止单字符行归一化畸变产生大小写误判
+        char_heights = [b[3] for b in valid_chars]
+        global_median_h = float(np.median(char_heights)) if char_heights else 20.0
         max_h = max(b[3] for b in valid_chars)
+        max_h = max(max_h, global_median_h * 1.2)
         
         line_probs = []
         line_aspect_ratios = []

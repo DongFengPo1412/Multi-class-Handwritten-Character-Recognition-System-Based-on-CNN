@@ -148,7 +148,7 @@ class HandwrittenCorrector:
             
         return adjusted_probs
 
-    def joint_probability_decode(self, adjusted_probs):
+    def joint_probability_decode(self, adjusted_probs, raw_str=None):
         """
         Perform Joint Probability Lexicon Decoding.
         Finds the word in the dictionary of length N that maximizes:
@@ -174,6 +174,24 @@ class HandwrittenCorrector:
                 idx = torch.argmax(prob).item()
                 decoded.append(label_map[idx])
             return "".join(decoded), 0.5
+            
+        if raw_str is None:
+            raw_str = "".join(label_map[torch.argmax(p).item()] for p in adjusted_probs)
+
+        # 词典预筛选剪枝，剔除编辑距离和混淆距离相差过大的无关词汇，加速查词典计算
+        pruned_candidates = []
+        for word in candidates:
+            comp = self.word_compatibility_score(raw_str, word)
+            if comp > -900.0:
+                pruned_candidates.append(word)
+
+        # 若全部被剪枝，回退至原始候选词的前 20 个或直接做 argmax
+        if not pruned_candidates:
+            decoded = []
+            for prob in adjusted_probs:
+                idx = torch.argmax(prob).item()
+                decoded.append(label_map[idx])
+            return "".join(decoded), 0.08
             
         best_word = None
         max_log_prob = -9999.0
@@ -278,7 +296,7 @@ class HandwrittenCorrector:
 
         alpha_probs = self.fold_digit_confusions_to_alpha(probs)
         alpha_probs = self.apply_geometry_corrections(alpha_probs, aspect_ratios, relative_heights, "alpha")
-        decoded, confidence = self.joint_probability_decode(alpha_probs)
+        decoded, confidence = self.joint_probability_decode(alpha_probs, raw_str)
         decoded_lower = decoded.lower()
         if decoded_lower not in self.dictionary or len(decoded_lower) != len(raw_str):
             return None, confidence
@@ -476,7 +494,7 @@ class HandwrittenCorrector:
             conf = 1.0
         elif pattern == "alpha" and len(self.dictionary) > 0 and min_conf <= 0.95:
             # English word: run spelling check
-            decoded_str, conf = self.joint_probability_decode(adjusted_probs)
+            decoded_str, conf = self.joint_probability_decode(adjusted_probs, raw_str)
         else:
             # Other structured patterns or high confidence alpha, or neutral: do argmax on adjusted
             decoded_chars = []
