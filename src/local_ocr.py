@@ -185,6 +185,75 @@ def sort_boxes_reading_order(boxes):
     return ordered
 
 
+def detect_is_vertical(boxes):
+    if not boxes or len(boxes) < 3:
+        return False
+    v_votes = 0
+    h_votes = 0
+    for i, b1 in enumerate(boxes):
+        cx1 = b1[0] + b1[2] / 2.0
+        cy1 = b1[1] + b1[3] / 2.0
+        nn = None
+        min_d = float('inf')
+        for j, b2 in enumerate(boxes):
+            if i == j:
+                continue
+            cx2 = b2[0] + b2[2] / 2.0
+            cy2 = b2[1] + b2[3] / 2.0
+            d = (cx1 - cx2)**2 + (cy1 - cy2)**2
+            if d < min_d:
+                min_d = d
+                nn = (cx2, cy2)
+        if nn is not None:
+            dx = abs(cx1 - nn[0])
+            dy = abs(cy1 - nn[1])
+            if dy > dx * 1.2:
+                v_votes += 1
+            else:
+                h_votes += 1
+    return v_votes > h_votes
+
+
+def split_line_into_words(line_boxes, is_vertical):
+    if not line_boxes:
+        return []
+    
+    # Sort boxes: horizontal sorted by X, vertical sorted by Y
+    if is_vertical:
+        sorted_boxes = sorted(line_boxes, key=lambda b: b[1])
+    else:
+        sorted_boxes = sorted(line_boxes, key=lambda b: b[0])
+        
+    words = []
+    current_word = [sorted_boxes[0]]
+    
+    for i in range(len(sorted_boxes) - 1):
+        b1 = sorted_boxes[i]
+        b2 = sorted_boxes[i+1]
+        
+        if is_vertical:
+            # Vertical gap: b2's top - b1's bottom
+            gap = b2[1] - (b1[1] + b1[3])
+            char_size = (b1[3] + b2[3]) / 2.0
+        else:
+            # Horizontal gap: b2's left - b1's right
+            gap = b2[0] - (b1[0] + b1[2])
+            char_size = (b1[2] + b2[2]) / 2.0
+            
+        # Space detection threshold: gap is larger than 0.55 * average character size
+        # and at least 10 pixels to prevent noise splitting
+        space_threshold = max(10.0, 0.55 * char_size)
+        
+        if gap > space_threshold:
+            words.append(current_word)
+            current_word = [b2]
+        else:
+            current_word.append(b2)
+            
+    words.append(current_word)
+    return words
+
+
 def merge_close_runs(runs, max_gap):
     if not runs:
         return []
@@ -399,12 +468,15 @@ def should_merge(box1, box2):
         
     # 2. Vertical alignment (e.g., dot of 'i' or 'j', or vertical parts of broken letters)
     # High horizontal overlap (X overlap ratio > 0.4)
-    if x_overlap_ratio > 0.4 or (x1 >= x2 - 2 and x1_max <= x2_max + 2) or (x2 >= x1 - 2 and x2_max <= x1_max + 2):
+    if x_overlap_ratio > 0.4 or (x1 >= x2 - 2 and x1_max <= x2_max + 2) or (x2 >= x1 - 2 and x1_max <= x2_max + 2):
         combined_h = max(y1_max, y2_max) - min(y1, y2)
         # Check if they are vertically close
         # Combined height should not exceed 2.2 * max_h to avoid merging different text lines
-        if y_gap < max(15, min_h * 1.8) and combined_h <= max_h * 2.2:
-            return True
+        # Also, do not vertically merge two substantial boxes to avoid merging stacked letters/words
+        is_both_substantial = (h1 >= 8 and h2 >= 8 and w1 >= 6 and w2 >= 6 and (w1 * h1) >= 50 and (w2 * h2) >= 50)
+        if not is_both_substantial:
+            if y_gap < max(15, min_h * 1.8) and combined_h <= max_h * 2.2:
+                return True
             
     # 3. Horizontal splitting (broken stroke parts of the same letter side-by-side)
     # They should overlap vertically (same line)
@@ -629,55 +701,75 @@ class LocalOCRRecognizer:
         max_h = max(b[3] for b in valid_chars)
         max_h = max(max_h, global_median_h * 1.2)
         
-        line_probs = []
-        line_aspect_ratios = []
-        line_relative_heights = []
-        uncertain_infos = []
-        
-        for line_idx, line_boxes in enumerate(valid_lines):
-            current_line_probs = []
-            current_line_aspect_ratios = []
-            current_line_relative_heights = []
-            
-            for cx, cy, cw, ch in line_boxes:
-                char_crop = thresh[cy:cy + ch, cx:cx + cw]
-                char_norm = preprocess_for_emnist(char_crop)
-                
-                img_t = torch.from_numpy(char_norm).float().to(self.device).view(1, 1, 28, 28) / 255.0
-                img_t = (img_t - 0.1736) / 0.3317
-                
-                avg_prob = predict_with_tta(self.model, img_t, self.device)
-                prob_vec = avg_prob.squeeze(0)
-                
-                ar = cw / float(ch)
-                rh = ch / float(max_h)
-                
-                current_line_probs.append(prob_vec)
-                current_line_aspect_ratios.append(ar)
-                current_line_relative_heights.append(rh)
-                
-                top3_vals, top3_indices = torch.topk(prob_vec, 3)
-                val1, val2 = top3_vals[0].item(), top3_vals[1].item()
-                if val1 < 0.80 or (val1 - val2) < 0.20:
-                    opts = ", ".join(f"'{label_map[top3_indices[i].item()]}' ({top3_vals[i].item():.1%})" for i in range(3))
-                    uncertain_info = f"Line {line_idx+1} Char #{len(current_line_probs)}: {opts}"
-                    uncertain_infos.append(uncertain_info)
-                    
-            line_probs.append(current_line_probs)
-            line_aspect_ratios.append(current_line_aspect_ratios)
-            line_relative_heights.append(current_line_relative_heights)
-            
         raw_parts = []
         decoded_parts = []
         contexts = []
-        for probs, ars, rhs in zip(line_probs, line_aspect_ratios, line_relative_heights):
-            raw_part, decoded_part, line_context = self.corrector.decode_sequence(probs, ars, rhs)
-            raw_parts.append(raw_part)
-            decoded_parts.append(decoded_part)
-            contexts.append(line_context)
+        uncertain_infos = []
+        
+        # 前置排版趋势检测
+        is_vertical_layout = detect_is_vertical(valid_chars)
+        
+        for line_idx, line_boxes in enumerate(valid_lines):
+            # 将当前行/列的字符边界框依据自适应间距切分为独立的单词
+            word_groups = split_line_into_words(line_boxes, is_vertical_layout)
             
-        raw_result = " ".join(raw_parts)
-        final_result = " ".join(decoded_parts)
+            line_raw_words = []
+            line_decoded_words = []
+            line_word_contexts = []
+            
+            for word_idx, word_boxes in enumerate(word_groups):
+                word_probs = []
+                word_aspect_ratios = []
+                word_relative_heights = []
+                
+                for cx, cy, cw, ch in word_boxes:
+                    char_crop = thresh[cy:cy + ch, cx:cx + cw]
+                    char_norm = preprocess_for_emnist(char_crop)
+                    
+                    img_t = torch.from_numpy(char_norm).float().to(self.device).view(1, 1, 28, 28) / 255.0
+                    img_t = (img_t - 0.1736) / 0.3317
+                    
+                    avg_prob = predict_with_tta(self.model, img_t, self.device)
+                    prob_vec = avg_prob.squeeze(0)
+                    
+                    ar = cw / float(ch)
+                    rh = ch / float(max_h)
+                    
+                    word_probs.append(prob_vec)
+                    word_aspect_ratios.append(ar)
+                    word_relative_heights.append(rh)
+                    
+                    top3_vals, top3_indices = torch.topk(prob_vec, 3)
+                    val1, val2 = top3_vals[0].item(), top3_vals[1].item()
+                    if val1 < 0.80 or (val1 - val2) < 0.20:
+                        opts = ", ".join(f"'{label_map[top3_indices[i].item()]}' ({top3_vals[i].item():.1%})" for i in range(3))
+                        uncertain_info = f"Line {line_idx+1} Word #{word_idx+1} Char #{len(word_probs)}: {opts}"
+                        uncertain_infos.append(uncertain_info)
+                
+                # 按单词粒度执行词典概率检索与纠错
+                raw_word, decoded_word, word_context = self.corrector.decode_sequence(
+                    word_probs, word_aspect_ratios, word_relative_heights
+                )
+                line_raw_words.append(raw_word)
+                line_decoded_words.append(decoded_word)
+                if word_context != "neutral":
+                    line_word_contexts.append(word_context)
+            
+            # 按版式拼接单词：竖排版用换行符，横排版用空格
+            word_joiner = "\n" if is_vertical_layout else " "
+            raw_parts.append(word_joiner.join(line_raw_words))
+            decoded_parts.append(word_joiner.join(line_decoded_words))
+            
+            if line_word_contexts:
+                from collections import Counter
+                contexts.append(Counter(line_word_contexts).most_common(1)[0][0])
+            else:
+                contexts.append("neutral")
+                
+        # 按照竖排用换行、横排用空格的版式连接各个段落/列
+        final_joiner = "\n" if is_vertical_layout else " "
+        raw_result = final_joiner.join(raw_parts)
+        final_result = final_joiner.join(decoded_parts)
         
         return LocalOCRResult(
             raw_result,
