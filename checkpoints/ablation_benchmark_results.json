@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-09-14 17:06:42",
+  "device": "cuda",
+  "test_samples_evaluated": 5000,
+  "sequences_evaluated": 50,
+  "results": {
+    "M1": {
+      "char_acc": 84.24,
+      "seq_acc": 16.0
+    },
+    "M2": {
+      "char_acc": 84.98,
+      "seq_acc": 12.0
+    },
+    "M3": {
+      "char_acc": 84.9,
+      "seq_acc": 14.0
+    },
+    "M4": {
+      "char_acc": 86.51,
+      "seq_acc": 46.0
+    },
+    "M5": {
+      "char_acc": 87.17,
+      "seq_acc": 90.0
+    }
+  }
+}

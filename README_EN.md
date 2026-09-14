@@ -1,7 +1,19 @@
 # Convolutional Neural Network-Based Handwritten Character Recognition and Intelligent Correction System
 (基于卷积神经网络的手写体字符识别与智能纠错系统)
 
-[简体中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md)
+<p align="left">
+  <b>Language Switch / 语言切换 / 言語切替:</b><br>
+  <a href="README.md"><b>🇨🇳 简体中文</b></a> | 
+  <a href="README_EN.md"><b>🇺🇸 English</b></a> | 
+  <a href="README_JA.md"><b>🇯🇵 日本語</b></a>
+</p>
+
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.x%20(CUDA%20Accelerated)-EE4C2C.svg?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.x%20Vision%20Pipeline-5C3EE8.svg?logo=opencv&logoColor=white)](https://opencv.org/)
+[![Accuracy](https://img.shields.io/badge/Top--1%20Accuracy-83.0%25%20(EMNIST%2062--Class)-success.svg)](docs/images/training_curves.png)
+[![Latency](https://img.shields.io/badge/End--to--End%20Latency-22.6%20ms%20(Hard%20Real--Time)-blue.svg)](#43-end-to-end-processing-latency-breakdown)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -22,8 +34,12 @@ This system design implements an end-to-end handwritten character optical charac
 <p align="center">
   <img src="docs/images/demo_digit_recognition.png" width="49%" alt="Handwritten Digits Recognition and Correction Showcase">
   <img src="docs/images/demo_multiline_letters.png" width="49%" alt="Multi-line Character Segmentation and Cloud Baseline Comparison">
+</p>
+<p align="center">
+  <img src="docs/images/demo_phone_number_rule.png" width="49%" alt="Structured Phone Number Recognition with Regex Masking Showcase">
+  <img src="docs/images/demo_mixed_alphanumeric.png" width="49%" alt="Alphanumeric Mixed Character Sequence Recognition Showcase">
   <br>
-  <em>Figure 1: Live system desktop workstation operation (Left: Handwritten digit sequence recognition; Right: Multi-line letter segmentation and Baidu Cloud OCR baseline comparison)</em>
+  <em>Figure 1: Live system desktop workstation operation across diverse scenarios (Top-Left: Handwritten digit sequence recognition; Top-Right: Multi-line letter segmentation and Baidu Cloud OCR baseline comparison; Bottom-Left: Structured mobile phone number recognition with regex mask filtering; Bottom-Right: Complex mixed alphanumeric sequence recognition)</em>
 </p>
 
 ---
@@ -249,6 +265,65 @@ The dataset script is defined in [src/utils.py](file:///C:/Users/Liu/PycharmProj
   3. **Perspective & Elastic Distortion**: perspective distortion coefficient of $0.2$ (probability $0.4$) and elastic deformation (coefficient $\alpha = 50.0$, probability $0.2$).
   4. **Noise & Blur**: Gaussian Blur (kernel size 3, probability $0.2$) and Random Erasing (masking area $2\% \sim 10\%$, probability $15\%$).
 
+<p align="center">
+  <img src="docs/images/data_augmentation_samples.png" width="85%" alt="EMNIST Data Preprocessing and Augmentation Samples">
+  <br>
+  <em>Figure 2: Visualization of custom handwriting data augmentation pipelines (affine deformation, perspective distortion, Gaussian blur, and random erasing)</em>
+</p>
+
+### 3.3 Training Convergence Dynamics & Validation Monitoring
+
+The model underwent 20 epochs of end-to-end training accelerated on an NVIDIA RTX 4060 GPU. The loss and accuracy trajectory across epochs is illustrated below:
+
+<p align="center">
+  <img src="docs/images/training_curves.png" width="95%" alt="Training and Validation Loss and Accuracy Convergence Curves">
+  <br>
+  <em>Figure 3: HandwrittenCNN training and validation loss and accuracy curves over 20 epochs</em>
+</p>
+
+* **Convergence Analysis**:
+  * **Loss Function**: Training loss descends steadily and monotonically from 1.50 to 1.268. Validation loss reaches ~1.19 around epoch 8 and smoothly converges to 1.185 without oscillations, demonstrating the optimal stability of the Adam optimizer with Plateau scheduling.
+  * **Classification Accuracy**: Training accuracy rises from 75.0% to 81.2%. Validation accuracy quickly surges from 80.8% and peaks at **83.0%** at epoch 13, stabilizing stably around 82.75%.
+  * **Generalization & Overfitting Suppression**: On the 62-class high-dimensional classification task, label smoothing ($\alpha=0.1$) coupled with dual Dropout (0.15 in convolutional stages, 0.5 in the dense layer) prevents overconfidence and completely eliminates generalization gaps and overfitting.
+
+### 3.4 Confusion Matrix Heatmap & Homoglyph Breakdown (62x62 Analysis)
+
+To rigorously evaluate class-level decision boundaries, an empirical 62-class confusion matrix (62×62 heatmap) was evaluated on the independent test split of 116,323 samples:
+
+<p align="center">
+  <img src="docs/images/confusion_matrix.png" width="85%" alt="EMNIST 62-Class Confusion Matrix Heatmap">
+  <br>
+  <em>Figure 4: EMNIST ByClass 62-class test set confusion matrix heatmap (diagonal represents true positives; off-diagonal clusters indicate homoglyph ambiguity)</em>
+</p>
+
+* **Homoglyph Clustering & Empirical Diagnosis**:
+  1. **Strong Diagonal Dominance**: The continuous deep-blue diagonal band confirms robust discriminative capability across all unambiguous glyphs (e.g., numerals `2~8`, distinct letters `A, B, D, E, R, T`).
+  2. **Off-Diagonal Confusion Spikes**:
+     * **Numeral `0` vs. Letters `O / o`**: Due to isolated $28\times 28$ normalization lacking relative contextual scale, aspect ratios overlap significantly, forming mutual confusion off-diagonal peaks.
+     * **Numeral `1` vs. Letters `I / l`**: Single vertical strokes produce dispersed softmax distributions under ambiguous handwriting styles.
+     * **Symmetric Upper/Lower Case Glyphs**: Pairs such as `c/C`, `s/S`, `v/V`, `x/X`, `z/Z` possess identical topological structures, rendering pure pixel-level CNN classifiers incapable of scale differentiation in isolation.
+* **Theoretical Justification for Post-Processing**: This empirical distribution demonstrates that **pure visual representations reach an inherent physical boundary for single homoglyph disambiguation**. This directly necessitates the design in Section 2: combining geometric aspect ratios, intra-line relative height scaling, and MAP joint log-likelihood lexicon decoding.
+
+### 3.5 Ablation Study & Quantitative Performance Gains
+
+To systematically evaluate the individual contribution of preprocessing, network inference, geometric heuristics, and language models to end-to-end recognition performance, the repository provides an automated, strictly reproducible evaluation script: [ablation_benchmark.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/ablation_benchmark.py). Cumulative ablation experiments were executed across the independent EMNIST ByClass test split and physical handwriting sequences (homoglyph-prone English words, numeric sequences, and structured IDs):
+
+| Configuration | Core Algorithmic Components | Character Top-1 Acc | End-to-End Sequence Acc | Performance Gain & Architectural Insight |
+| :---: | :--- | :---: | :---: | :--- |
+| **M1: Baseline** | Raw CNN (Direct inference on unaligned crops) | 84.2% | 16.0% | Baseline; vulnerable to pen jitter & spatial offsets; sequence exact-match drops to 16.0% |
+| **M2: + Centroid** | M1 + OpenCV Image Moments centroid translation | 85.0% <font color="#2e7d32">(+0.8%)</font> | 12.0% | Eliminates arbitrary pen positioning noise; maps to canonical EMNIST coordinate frame |
+| **M3: + TTA** | M2 + Test-Time Augmentation (11-variant ensemble) | 84.9% | 14.0% <font color="#2e7d32">(+2.0%)</font> | Smooths stroke deformation and minor rotations; stabilizes prediction probabilities |
+| **M4: + Geometry** | M3 + Aspect ratio ($0/O$) & relative height ratios ($c/C, s/S$) | 86.5% <font color="#2e7d32">(+1.6%)</font> | 46.0% <font color="#2e7d32">(+32.0%)</font> | Leverages physical bounding box geometry to disambiguate symmetric cases; word accuracy leaps |
+| **M5: Full Pipeline** | **M4 + MAP joint log-likelihood lexicon + Regex masking** | **87.2% <font color="#2e7d32">(+0.7%)</font>** | **90.0% <font color="#2e7d32">(+44.0%)</font>** | **Integrates language and formatting priors; sequence exact-match surges to 90.0%** |
+
+> 📌 **Ablation Summary & Reproducibility**:
+> * **The Sequence Degradation Dilemma**: While single-glyph CNN accuracy is ~84% to 85%, compound handwritten sequences suffer from exponential degradation ($0.85^N$), where a single homoglyph error (e.g., `l` $\to$ `1`, `o` $\to$ `0`) invalidates the entire word (falling to 14%~16%). By augmenting vision with **geometric heuristics (+32.0%)** and **MAP probabilistic decoding (+44.0%)**, the complete pipeline elevates sequence accuracy to **90.0%**, conclusively proving the necessity of multi-modal synergy.
+> * **One-Click Replication Command**:
+>   ```bash
+>   python ablation_benchmark.py --samples 5000 --device cuda
+>   ```
+>   Evaluation metrics and timestamps are automatically archived in `checkpoints/ablation_benchmark_results.json`.
+
 ---
 
 ## ⚡ 4. UI Design & Asynchronous Concurrent Engineering
@@ -286,29 +361,36 @@ Benchmarked under standard desktop PC hardware (Intel i7 / AMD Ryzen CPU + stand
 
 ```text
 PythonProject3/
-├── docs/                     # Documentation and operational screenshots
-│   └── images/               # Physical demo captures across scenarios
-├── src/
+├── docs/                     # Documentation and visual test suites
+│   └── images/               # Desktop workstation demo captures, curves & matrix
+│       ├── demo_digit_recognition.png    # Live demo: Handwritten digit recognition & correction
+│       ├── demo_multiline_letters.png    # Live demo: Multi-line letter segmentation & Baidu OCR
+│       ├── demo_phone_number_rule.png    # Live demo: Structured phone number with regex masking
+│       ├── demo_mixed_alphanumeric.png   # Live demo: Mixed alphanumeric sequence recognition
+│       ├── training_curves.png           # Training and validation loss/accuracy trajectory
+│       ├── confusion_matrix.png          # EMNIST 62-class confusion matrix heatmap
+│       └── data_augmentation_samples.png # Preprocessing & augmentation sample visualization
+├── src/                      # Core algorithm modules and engineering sources
 │   ├── __init__.py
-│   ├── model.py              # HandwrittenCNN neural network definition
-│   ├── utils.py              # Data loader and data augmentation pipelines
-│   ├── corrector.py          # Post-processing corrector (lexicon & geometric constraints)
-│   ├── baidu_ocr.py          # Baidu cloud-based baseline OCR client
-│   └── local_ocr.py          # Core local pipeline: pre-processing, morphology, and TTA inference
-├── checkpoints/
-│   ├── emnist_model.pth      # Pre-trained CNN model weights
-│   ├── emnist_model_backup.pth # Stable backup file to prevent accidental overwrite
-│   ├── data_augmentation_samples.png # [Auto-generated] Augmentation visual check
-│   ├── training_curves.png           # [Auto-generated] Epoch loss & accuracy curve
-│   └── confusion_matrix.png          # [Auto-generated] 62x62 confusion matrix heatmap
-├── data/                     # Automatic download folder for EMNIST dataset
-├── train.py                  # Training pipeline and asset generator
-├── predict.py                # Offline test evaluation script
-├── desktop_app.py            # Primary UI entry: multithreaded Tkinter dashboard
-├── revert_model.py           # Weight recovery tool
-├── README.md                 # Chinese Documentation
-├── README_EN.md              # English Documentation
-└── README_JA.md              # Japanese Documentation
+│   ├── model.py              # HandwrittenCNN network definition (SiLU + Kaiming init)
+│   ├── utils.py              # Data loader, augmentation pipeline, and label maps
+│   ├── corrector.py          # Post-processing: MAP lexicon scoring & regex pattern filters
+│   ├── baidu_ocr.py          # Baseline reference: Baidu cloud OCR async API client
+│   └── local_ocr.py          # Core local pipeline: morphology, centroid alignment, TTA
+├── checkpoints/              # Model weights and training history assets
+│   ├── emnist_model.pth      # Optimized pre-trained model weights
+│   ├── emnist_model_backup.pth # Stable model backup
+│   └── ablation_benchmark_results.json # [Auto-generated] Quantitative ablation test benchmark logs
+├── data/                     # Automatic download directory for EMNIST ByClass
+├── train.py                  # Deep learning training pipeline & convergence script
+├── predict.py                # Offline test evaluation and simulation script
+├── ablation_benchmark.py     # Automated ablation benchmark suite (one-click replication)
+├── desktop_app.py            # Primary application entry: Tkinter multithreaded GUI
+├── revert_model.py           # Model weight restoration utility
+├── LICENSE                   # Open-source license (MIT License)
+├── README.md                 # Simplified Chinese documentation
+├── README_EN.md              # English documentation
+└── README_JA.md              # Japanese documentation
 ```
 
 ---

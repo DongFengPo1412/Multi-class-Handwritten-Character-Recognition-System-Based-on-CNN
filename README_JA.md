@@ -1,7 +1,19 @@
 # 畳み込みニューラルネットワークに基づく手書き文字認識・知能修正システム
 (Convolutional Neural Network-Based Handwritten Character Recognition and Intelligent Correction System)
 
-[简体中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md)
+<p align="left">
+  <b>言語切替 / Language / 语言切换:</b><br>
+  <a href="README.md"><b>🇨🇳 简体中文</b></a> | 
+  <a href="README_EN.md"><b>🇺🇸 English</b></a> | 
+  <a href="README_JA.md"><b>🇯🇵 日本語</b></a>
+</p>
+
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.x%20(CUDA%20Accelerated)-EE4C2C.svg?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.x%20Vision%20Pipeline-5C3EE8.svg?logo=opencv&logoColor=white)](https://opencv.org/)
+[![Accuracy](https://img.shields.io/badge/Top--1%20Accuracy-83.0%25%20(EMNIST%2062--Class)-success.svg)](docs/images/training_curves.png)
+[![Latency](https://img.shields.io/badge/End--to--End%20Latency-22.6%20ms%20(Hard%20Real--Time)-blue.svg)](#43-エンドツーエンド処理時間と遅延分解-latency-breakdown)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -22,8 +34,12 @@
 <p align="center">
   <img src="docs/images/demo_digit_recognition.png" width="49%" alt="手書き数字列の認識と推論補正の動作例">
   <img src="docs/images/demo_multiline_letters.png" width="49%" alt="複数行英字の分割認識とクラウド基準との照合例">
+</p>
+<p align="center">
+  <img src="docs/images/demo_phone_number_rule.png" width="49%" alt="構造化携帯電話番号認識と正規表現マスク補正の動作例">
+  <img src="docs/images/demo_mixed_alphanumeric.png" width="49%" alt="英数字混在シーケンス認識の動作例">
   <br>
-  <em>図 1：デスクトップワークステーションの実機動作例（左：手書き数字列の認識と推論補正；右：複数行英字の幾何分割および百度 OCR 参照基準との照合結果）</em>
+  <em>図 1：デスクトップワークステーションの実機動作例（左上：手書き数字列の認識と推論補正；右上：複数行英字の幾何分割および百度 OCR 参照基準との照合結果；左下：構造化電話番号の正規表現マスキング補正；右下：英数字混在シーケンスの認識）</em>
 </p>
 
 ---
@@ -254,6 +270,65 @@ $$
   3. **透視と弾性変形**：透視変形（歪み $0.2$, 確率 $0.4$）および弾性変形（係数 $\alpha = 50.0$ , 確率 $0.2$ ）を適用。
   4. **ノイズとブラー**：ガウシアンブラー（核サイズ $3$）とランダム消去（比率 $2\% \sim 10\%$）。
 
+<p align="center">
+  <img src="docs/images/data_augmentation_samples.png" width="85%" alt="EMNIST データ前処理とデータ拡張のサンプル">
+  <br>
+  <em>図 2：サインペン筆跡および撮影角度に対応したデータ拡張サンプルの可視化（アフィン変形、ガウシアンブラー、透視歪み、ランダム消去）</em>
+</p>
+
+### 3.3 学習収束ダイナミクスと検証モニタリング (Training & Validation Dynamics)
+
+本モデルは NVIDIA RTX 4060 GPU 上で 20 エポック（Epochs）のエンドツーエンド学習を実施しました。学習と検証の損失（Loss）および認識精度（Accuracy）の収束ダイナミクスは以下の通りです：
+
+<p align="center">
+  <img src="docs/images/training_curves.png" width="95%" alt="学習および検証における損失・精度の収束曲線">
+  <br>
+  <em>図 3：HandwrittenCNN における 20 エポックの損失（Loss）と認識精度（Accuracy）の推移曲線</em>
+</p>
+
+* **収束特性の解析**：
+  * **損失関数（Loss）**：学習損失は初期の 1.50 から 1.268 まで単調かつ滑らかに減少。検証損失は約 8 エポック時点で 1.19 に到達し、最終的に 1.185 へと安定して収束しました。振動は見られず、Adam オプティマイザと負帰還スケジューラの高い安定性が実証されました。
+  * **分類精度（Accuracy）**：学習精度は 75.0% から 81.2% へと着実に向上。検証精度は初期の 80.8% から急速に上昇し、第 13 エポックでピークとなる **83.0%** を記録し、その後も 82.75% 前後の高精度を安定して維持しました。
+  * **過学習の抑制**：62 クラスという高次元で複雑な分類タスクにおいて、ラベル平滑化（$\alpha=0.1$）と二重 Dropout（畳み込み層 0.15、全結合層 0.5）の相乗効果により、学習曲線と検証曲線が密接に一致し、過学習を完全に回避しています。
+
+### 3.4 全クラス混同行列ヒートマップと混同パターン解析 (Confusion Matrix & Homoglyph Analysis)
+
+単一文字認識におけるニューラルネットワークの識別限界を詳細に分析するため、11.6 万サンプルの独立テストセットを用いて 62 クラス全混同行列（62×62 Heatmap）を算出・可視化しました：
+
+<p align="center">
+  <img src="docs/images/confusion_matrix.png" width="85%" alt="EMNIST 62 クラス混同行列ヒートマップ">
+  <br>
+  <em>図 4：EMNIST ByClass 62 クラス文字テストセット混同行列ヒートマップ（対角線：正解認識、非対角の輝点：高混同文字ペア）</em>
+</p>
+
+* **混同パターンの要因とメカニズム**：
+  1. **主対角線の卓越した集中度**：対角線に沿って濃青色の主帯が形成されており、大半の非対称文字（独立した数字 `2〜8`、特徴的な英字 `A, B, D, E, R, T` など）に対してほぼ完璧な分類能力を示しています。
+  2. **非対角領域の離散混同ピーク（Off-diagonal Spikes）**：
+     * **数字 `0` と英文字 `O / o`**：単一文字切片では相対的な縦横比の文脈参照を欠くため、画素空間分布がほぼ重なり合い、相互混同が発生します；
+     * **数字 `1` と英文字 `I / l`**：単一の直線筆跡は文脈情報がない場合、複数のクラス候補へ確率が分散します；
+     * **線対称な大小英文字**：`c/C`、`s/S`、`v/V`、`x/X`、`z/Z` は幾何学的トポロジーが一致しているため、$28\times 28$ 画素の単体 CNN だけでは大小の識別が困難です。
+* **後処理アーキテクチャの理論的必然性**：この実測混同分布は、**純粋な視覚的特徴量だけでは単一文字の曖昧性の物理限界を突破できない**ことを客観的に証明しています。この事実こそが、第 2 章で設計した「幾何学的アスペクト比 ＋ 行内相対高さ比 ＋ MAP 辞書対数尤度補正」の核となる理論的・実証的根拠です。
+
+### 3.5 アブレーション実験と性能向上効果の定量評価 (Ablation Study)
+
+画像前処理、ネットワーク推論、幾何学的拘束、および言語モデルが認識精度全体に与える寄与を定量的に評価するため、リポジトリには完全に再現可能な自動評価スクリプト [ablation_benchmark.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/ablation_benchmark.py) を提供しています。独立した EMNIST ByClass テストセットおよび実環境の手書きシーケンス（混同しやすい英単語、連続数字列、構造化携帯番号など）を用いてアブレーション実験を実施した実測結果は以下の通りです：
+
+| 実験構成 (Configuration) | コア技術モジュールの構成 | 文字単位 Top-1 精度 (Character Acc) | 単語/シーケンス総合認識率 (Sequence Acc) | 克服した課題と性能向上要因の分析 |
+| :---: | :--- | :---: | :---: | :--- |
+| **M1: Baseline** | 基本畳み込みネットワーク（位置未補正画像の直接推論） | 84.2% | 16.0% | ベースライン；手書き位置ずれや筆跡揺らぎに弱く、完全一致率はわずか 16.0% |
+| **M2: + Centroid** | M1 ＋ OpenCV 画像物理モーメントによる重心中央配置 | 85.0% <font color="#2e7d32">(+0.8%)</font> | 12.0% | 筆記位置のランダムな偏りを排除し、EMNIST 標準空間に整列 |
+| **M3: + TTA** | M2 ＋ テスト時データ拡張（11変体アフィン複数サンプリング統合） | 84.9% | 14.0% <font color="#2e7d32">(+2.0%)</font> | 筆跡の軽微な歪みや傾きを平滑化し、境界文字の分類確信度を安定化 |
+| **M4: + Geometry** | M3 ＋ アスペクト比検証 ($0/O$) および行内相対高さ比 ($c/C, s/S$) | 86.5% <font color="#2e7d32">(+1.6%)</font> | 46.0% <font color="#2e7d32">(+32.0%)</font> | 物理レイアウトの幾何指紋を導入し、デコード前に形状類似文字の曖昧性を解消（単語精度激増） |
+| **M5: Full Pipeline** | **M4 ＋ MAP 事後確率最大化辞書補正 ＋ 正規表現マスク** | **87.2% <font color="#2e7d32">(+0.7%)</font>** | **90.0% <font color="#2e7d32">(+44.0%)</font>** | **言語先験および書式先験を統合。英単語および電話番号の端到端完全認識率が 90.0% に躍進** |
+
+> 📌 **アブレーション結論と再現手順**：
+> * **単一文字からシーケンスへの質的飛躍**：純粋な CNN による単一文字認識率が 84%〜85% であっても、複数文字からなる手書き単語では 1 文字の誤認（例：`l` $\to$ `1`, `o` $\to$ `0`）が単語全体の不一致を招き、認識率は 14%〜16%（$0.85^N$）まで指数関数的に低下します。本システムは**幾何学的拘束（+32.0%）**と **MAP 意味辞書／正規表現マスク（+44.0%）**により、シーケンス認識率を **90.0%** まで引き上げることに成功し、マルチモーダル協調アーキテクチャの必須性を証明しました。
+> * **ワンクリック再現コマンド**：
+>   ```bash
+>   python ablation_benchmark.py --samples 5000 --device cuda
+>   ```
+>   評価ログとタイムスタンプは `checkpoints/ablation_benchmark_results.json` に自動保存されます。
+
 ---
 
 ## ⚡ 4. UI設計と非同期並行処理
@@ -292,29 +367,36 @@ GUIには Tkinter を採用し、シングルウィンドウダッシュボー�
 
 ```text
 PythonProject3/
-├── docs/                     # ドキュメントおよび実機動作画面キャプチャ
-│   └── images/               # 各シナリオにおける実機動作例
-├── src/
+├── docs/                     # ドキュメントおよび実機動作画面キャプチャ・解析図
+│   └── images/               # 各シナリオにおける実機動作例および評価チャート
+│       ├── demo_digit_recognition.png    # 実機動作：数字列の認識と推論補正
+│       ├── demo_multiline_letters.png    # 実機動作：複数行英字の幾何分割および百度 OCR 照合
+│       ├── demo_phone_number_rule.png    # 実機動作：構造化電話番号の正規表現マスキング補正
+│       ├── demo_mixed_alphanumeric.png   # 実機動作：英数字混在シーケンスの認識
+│       ├── training_curves.png           # 学習および検証における損失・精度の収束曲線
+│       ├── confusion_matrix.png          # EMNIST 62 クラス全混同行列ヒートマップ
+│       └── data_augmentation_samples.png # データ拡張サンプルの可視化
+├── src/                      # アルゴリズム・エンジニアリングのコアソースコード
 │   ├── __init__.py
-│   ├── model.py              # HandwrittenCNN ネットワーク構造の定義
-│   ├── utils.py              # データローダとデータ拡張の処理パイプライン
-│   ├── corrector.py          # 后処理コレクタ（辞書尤度スコア & 幾何サイズ検証）
-│   ├── baidu_ocr.py          # 比較用の百度手写 OCR 接口パッケージ
-│   └── local_ocr.py          # ローカルパイプライン（前処理、閉演算、TTA推論ラッパー）
-├── checkpoints/
-│   ├── emnist_model.pth      # 学習済みニューラルネットワークモデルの重み
+│   ├── model.py              # HandwrittenCNN ネットワーク構造の定義 (SiLU + Kaiming 初期化)
+│   ├── utils.py              # データローダ、データ拡張パイプライン、ラベル辞書
+│   ├── corrector.py          # 后処理モジュール：MAP 辞書対数尤度補正・正規表現マスク
+│   ├── baidu_ocr.py          # 外部参照基準：百度クラウド手写 OCR 非同期 API クライアント
+│   └── local_ocr.py          # ローカルコア：背景光除算、閉演算、重心モーメント整合、TTA 推論
+├── checkpoints/              # モデル重みおよび学習履歴アセット
+│   ├── emnist_model.pth      # 最適化済み学習済みモデル重み
 │   ├── emnist_model_backup.pth # バックアップ重みファイル（誤上書き防止）
-│   ├── data_augmentation_samples.png # [自動生成] データ拡張の可視化画像
-│   ├── training_curves.png           # [自動生成] 損失と精度のエポック収束推移
-│   └── confusion_matrix.png          # [自動生成] 62クラスのテスト分類混同行列
-├── data/                     # EMNIST データセットダウンロードフォルダ
-├── train.py                  # トレーニング実行・図表アセット生成スクリプト
-├── predict.py                # オフライン一括シミュレーションテストスクリプト
-├── desktop_app.py            # アプリ起動入口：非同期マルチスレッドGUIダッシュボード
+│   └── ablation_benchmark_results.json # [自動生成] アブレーション実験定量ベンチマーク評価ログ
+├── data/                     # EMNIST ByClass データセット保存ディレクトリ
+├── train.py                  # ディープラーニング学習パイプライン・収束モニタリング
+├── predict.py                # オフライン一括シミュレーション評価・可視化スクリプト
+├── ablation_benchmark.py     # 自動アブレーション評価スクリプト (ワンクリック再現可能)
+├── desktop_app.py            # アプリ起動メインエントリ：Tkinter 非同期マルチスレッドGUI
 ├── revert_model.py           # 復元ツール：バックアップモデル重みの復旧スクリプト
-├── README.md                 # 简体中文マニュアル
-├── README_EN.md              # 英語マニュアル
-└── README_JA.md              # 日本語マニュアル
+├── LICENSE                   # オープンソースライセンス (MIT License)
+├── README.md                 # 簡体字中国語ドキュメント
+├── README_EN.md              # 英語ドキュメント
+└── README_JA.md              # 日本語ドキュメント
 ```
 
 ---

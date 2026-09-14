@@ -146,7 +146,8 @@ cython_debug/
 
 # Project specific ignores
 data/
-checkpoints/
+checkpoints/*
+!checkpoints/ablation_benchmark_results.json
 
 # OS files
 .DS_Store

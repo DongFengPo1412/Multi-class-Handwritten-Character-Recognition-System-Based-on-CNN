@@ -1,7 +1,19 @@
 # 基于卷积神经网络的手写体字符识别与智能纠错系统
 (Convolutional Neural Network-Based Handwritten Character Recognition and Intelligent Correction System)
 
-[简体中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md)
+<p align="left">
+  <b>语言切换 / Language / 言語切替:</b><br>
+  <a href="README.md"><b>🇨🇳 简体中文</b></a> | 
+  <a href="README_EN.md"><b>🇺🇸 English</b></a> | 
+  <a href="README_JA.md"><b>🇯🇵 日本語</b></a>
+</p>
+
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.x%20(CUDA%20Accelerated)-EE4C2C.svg?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.x%20Vision%20Pipeline-5C3EE8.svg?logo=opencv&logoColor=white)](https://opencv.org/)
+[![Accuracy](https://img.shields.io/badge/Top--1%20Accuracy-83.0%25%20(EMNIST%2062--Class)-success.svg)](docs/images/training_curves.png)
+[![Latency](https://img.shields.io/badge/End--to--End%20Latency-22.6%20ms%20(Hard%20Real--Time)-blue.svg)](#43-端到端处理耗时与性能分解-latency-breakdown)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -22,8 +34,12 @@
 <p align="center">
   <img src="docs/images/demo_digit_recognition.png" width="49%" alt="手写数字序列识别与推理纠错实测">
   <img src="docs/images/demo_multiline_letters.png" width="49%" alt="多行手写字母分割识别与云端基准比对实测">
+</p>
+<p align="center">
+  <img src="docs/images/demo_phone_number_rule.png" width="49%" alt="结构化手写电话号码识别与正则掩码模式纠错实测">
+  <img src="docs/images/demo_mixed_alphanumeric.png" width="49%" alt="数字与字母混合序列实测">
   <br>
-  <em>图 1：系统桌面工作台实测效果（左图：手写数字序列识别；右图：多行字母分割对齐与百度 OCR 旁路基准对照）</em>
+  <em>图 1：系统桌面工作台多场景实机运行实测（左上：手写数字序列识别；右上：多行字母分割对齐与百度 OCR 旁路基准对照；左下：结构化文本手机号正则掩码纠错；右下：复杂字母数字混合序列识别）</em>
 </p>
 
 ---
@@ -250,6 +266,65 @@ $$
   4. **弹性形变**：形变系数 $\alpha = 50.0$ ，概率为 $0.2$ ，模拟纸张起伏。
   5. **模糊与噪声**：添加高斯模糊（核大小为 $3$）与随机擦除（遮蔽面积 $2\% \sim 10\%$）。
 
+<p align="center">
+  <img src="docs/images/data_augmentation_samples.png" width="85%" alt="EMNIST 数据增强与预处理样例">
+  <br>
+  <em>图 2：针对签字笔与拍摄偏角的数据增强样例可视化（包含仿射形变、高斯模糊、透视畸变与弹性形变）</em>
+</p>
+
+### 3.3 训练收敛动态与验证监控 (Training & Validation Dynamics)
+
+模型在 RTX 4060 GPU 上进行了 20 轮（Epochs）端到端极限训练，其训练与验证集 Loss / Accuracy 收敛动态如下图所示：
+
+<p align="center">
+  <img src="docs/images/training_curves.png" width="95%" alt="训练与验证 Loss 及 Accuracy 收敛曲线">
+  <br>
+  <em>图 3：HandwrittenCNN 在 20 轮训练中的损失值（Loss）与准确率（Accuracy）收敛曲线</em>
+</p>
+
+* **收敛性分析**：
+  * **损失函数（Loss）**：训练集 Loss 从初始的 1.50 稳步单调下降至 1.268；验证集 Loss 在第 8 轮左右降至 1.19 并平稳收敛至 1.185，未见震荡，展现了 Adam 优化器配合负反馈学习率调度的优良收敛特性。
+  * **分类准确率（Accuracy）**：训练集准确率从 75.0% 稳步爬升至 81.2%；验证集准确率由初始 80.8% 迅速攀升并在第 13 轮达到峰值 **83.0%**，最终平稳维持在 82.75% 左右。
+  * **过拟合抑制**：在 62 分类的高维复杂任务下，得益于带标签平滑（$\alpha=0.1$）的交叉熵损失以及双重 Dropout（卷积层 0.15、全连接层 0.5），训练与验证曲线自始至终高度贴合，未发生过拟合现象。
+
+### 3.4 全类混淆矩阵热力图与混淆模式分析 (Confusion Matrix & Homoglyph Analysis)
+
+为精准剖析神经网络在独立单字符维度的判别瓶颈，系统在包含 11.6 万张样本的独立测试集上绘制了 62 分类全混淆矩阵（62×62 Heatmap）：
+
+<p align="center">
+  <img src="docs/images/confusion_matrix.png" width="85%" alt="EMNIST 62 分类混淆矩阵热力图">
+  <br>
+  <em>图 4：EMNIST ByClass 62 类字符测试集混淆矩阵热力图（对角线为正确识别，离散亮斑为高混淆字符对）</em>
+</p>
+
+* **混淆特征机理与归因**：
+  1. **主对角线极强集中性**：矩阵对角线呈现深蓝色连续主带，表明系统在绝大多数非对称字符（如大部分独立数字 `2~8`、独有字母 `A, B, D, E, R, T` 等）上具备近乎 100% 的精准解耦能力。
+  2. **离散非对角混淆峰（Off-diagonal Spikes）**：
+     * **数字 `0` 与英文字母 `O / o`**：由于纯单字切图缺乏比例参照，在像素空间分布几乎完全重合，形成显著的互换混淆斑点；
+     * **数字 `1` 与字母 `I / l`**：单竖线笔画在无上下文时产生多分类概率弥散；
+     * **对称大小写字母**：如 `c/C`、`s/S`、`v/V`、`x/X`、`z/Z`，由于字形拓扑严格一致，仅依靠单一卷积网络在 $28\times 28$ 尺度下无法区分大写与小写。
+* **后处理架构的理论动机**：这一实测混淆分布直接证实了——**仅靠纯视觉特征无法突破单字歧义的物理上限**。这正是本系统在第 2 节设计“几何长宽比约束 + 行内相对高度比 + MAP 词典对数似然后验纠错”的核心理论与实证依据。
+
+### 3.5 消融实验与性能增益量化 (Ablation Study)
+
+为系统评估预处理、网络推理、几何先验与语言模型对端到端识别准确率的独立贡献，项目构建了完全可复现的自动化评测脚本 [ablation_benchmark.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/ablation_benchmark.py)。在 EMNIST ByClass 独立测试集与典型手写文本行（涵盖易混淆英文单词、连续数字序列、结构化手机号等）上执行了逐层累加消融对比实验，实测评估数据如下：
+
+| 实验组别 (Configuration) | 核心技术模块构成 | 字符级 Top-1 准确率 (Character Acc) | 单词/序列级端到端准确率 (Sequence Acc) | 典型攻关痛点与性能增益分析 |
+| :---: | :--- | :---: | :---: | :--- |
+| **M1: Baseline** | 基础卷积网络（原始未对齐切图直接推理） | 84.2% | 16.0% | 基线方案；受书写位置偏移与笔画扰动影响，序列整词完全匹配率仅 16.0% |
+| **M2: + Centroid** | M1 + OpenCV 图像物理矩平移居中对齐 | 85.0% <font color="#2e7d32">(+0.8%)</font> | 12.0% | 消除手写随意性引起的空间平移偏置，对齐 EMNIST 标准特征空间 |
+| **M3: + TTA** | M2 + 测试时增强（11 变体仿射多采样融合） | 84.9% | 14.0% <font color="#2e7d32">(+2.0%)</font> | 平滑单次推理的偶然形变与轻微旋转，提升潦草边缘字迹分类置信度 |
+| **M4: + Geometry** | M3 + 长宽比校验 ($0/O$) 与行内相对高度比 ($c/C, s/S$) | 86.5% <font color="#2e7d32">(+1.6%)</font> | 46.0% <font color="#2e7d32">(+32.0%)</font> | 引入宏观几何排版指纹，直接消除对称大小写与 `0/O` 歧义，整词匹配率激增 |
+| **M5: Full Pipeline** | **M4 + MAP 最大后验概率词典纠错 + 正则模式掩码** | **87.2% <font color="#2e7d32">(+0.7%)</font>** | **90.0% <font color="#2e7d32">(+44.0%)</font>** | **融合语言先验与格式先验，单词及特定结构化序列（手机号等）端到端准确率跃升至 90.0%** |
+
+> 📌 **消融结论与复现**：
+> * **单字到序列的质变**：纯 CNN 单字识别率虽达 84%~85%，但手写单词由多字组合，单个形近字的误判会导致整词匹配率断崖式跌落至 14%~16%（$0.85^N$ 指数衰减）。本系统通过**几何校验（+32.0%）**与 **MAP 语义词典/正则掩码（+44.0%）**，成功将序列整词识别率拉升至 **90.0%**，实证了多模态协同架构的必要性。
+> * **一键复现命令**：
+>   ```bash
+>   python ablation_benchmark.py --samples 5000 --device cuda
+>   ```
+>   评测产物与时间戳将自动归档于 `checkpoints/ablation_benchmark_results.json`。
+
 ---
 
 ## ⚡ 4. UI 交互设计与并发工程学
@@ -288,29 +363,36 @@ $$
 
 ```text
 PythonProject3/
-├── docs/                     # 系统文档与实机运行效果截图
-│   └── images/               # 桌面工作台多场景实测演示图
-├── src/
+├── docs/                     # 系统文档与实机运行效果图集
+│   └── images/               # 桌面工作台实测图、收敛曲线与混淆矩阵
+│       ├── demo_digit_recognition.png    # 实测：纯手写数字识别与推理纠错
+│       ├── demo_multiline_letters.png    # 实测：多行手写字母分割与百度 OCR 对比
+│       ├── demo_phone_number_rule.png    # 实测：手机号结构化文本与正则掩码纠错
+│       ├── demo_mixed_alphanumeric.png   # 实测：字母与数字混合序列识别
+│       ├── training_curves.png           # 训练与验证 Loss / Accuracy 收敛动态曲线
+│       ├── confusion_matrix.png          # EMNIST 62 分类全混淆矩阵热力图
+│       └── data_augmentation_samples.png # 数据增强（旋转、仿射、透视、擦除）样例图
+├── src/                      # 核心算法与工程源码
 │   ├── __init__.py
-│   ├── model.py              # HandwrittenCNN 神经网络结构定义
-│   ├── utils.py              # 数据加载器与数据增强变换
-│   ├── corrector.py          # 后处理模块：联合概率词典纠错与几何校验
-│   ├── baidu_ocr.py          # 旁路对照：百度手写体 OCR 接口封装
-│   └── local_ocr.py          # 核心流程：本地预处理、字符闭运算提取与 TTA 推理封装
-├── checkpoints/
+│   ├── model.py              # HandwrittenCNN 神经网络结构定义 (SiLU + Kaiming)
+│   ├── utils.py              # 数据加载器、数据增强变换与标签映射表
+│   ├── corrector.py          # 后处理模块：MAP 词典对数似然纠错、长宽比与正则掩码过滤
+│   ├── baidu_ocr.py          # 旁路对照：百度手写体云端 OCR 异步接口封装
+│   └── local_ocr.py          # 核心流程：背景光差分、闭运算提取、重心矩对齐与 TTA 推理
+├── checkpoints/              # 模型权重与训练历史资产
 │   ├── emnist_model.pth      # 训练好的最优模型权重文件
 │   ├── emnist_model_backup.pth # 模型备份文件
-│   ├── data_augmentation_samples.png # [自动生成] 数据增强样例可视化图像
-│   ├── training_curves.png           # [自动生成] 损失与准确率收敛曲线图
-│   └── confusion_matrix.png          # [自动生成] 测试集 62 分类混淆矩阵热力图
-├── data/                     # 数据集下载目录
-├── train.py                  # 神经网络训练与图表资产生成脚本
-├── predict.py                # 离线拼写校正模拟与可视化脚本
+│   └── ablation_benchmark_results.json # [自动生成] 消融实验定量基准测试评测产物
+├── data/                     # 数据集存储目录 (EMNIST ByClass)
+├── train.py                  # 深度学习训练流水线与收敛监控脚本
+├── predict.py                # 离线拼写校正对比模拟与测试集可视化脚本
+├── ablation_benchmark.py     # 自动化消融实验评测脚本 (可一键复现基准表格)
 ├── desktop_app.py            # 主程序入口：Tkinter 多线程响应式桌面工作台
 ├── revert_model.py           # 恢复工具：一键极速还原稳定备份权重
-├── README.md                 # 简体中文说明书
-├── README_EN.md              # 英文说明书
-└── README_JA.md              # 日文说明书
+├── LICENSE                   # 开源许可证 (MIT License)
+├── README.md                 # 简体中文说明文档
+├── README_EN.md              # 英文说明文档
+└── README_JA.md              # 日文说明文档
 ```
 
 ---
