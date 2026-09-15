@@ -238,7 +238,7 @@ While the custom local model is highly optimized for character-level classificat
 * **Redundancy Fallback**: Provides a backup text source in complex environments where local character contours overlap too severely.
 
 #### 2.5.2 Implementation Mechanism
-The API client is implemented in [src/baidu_ocr.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/src/baidu_ocr.py):
+The API client is implemented in [src/baidu_ocr.py](src/baidu_ocr.py):
 1. **OAuth 2.0 Token Caching**: Upon initialization, the client retrieves credentials from local configurations, requests and caches a 30-day Access Token.
 2. **Image Encoding & HTTP POST**: When a recognition task starts, the system crops the designated ROI matrix, converts it into a Base64 string, and dispatches an HTTP POST request to the cloud handwriting endpoint.
 3. **Async UI Rendering**: The client processes the JSON response in a background thread to retrieve the recognized text segments, updating the comparison card asynchronously.
@@ -256,7 +256,7 @@ The API client is implemented in [src/baidu_ocr.py](file:///C:/Users/Liu/Pycharm
 * **Scheduler & Early Stopping**: The scheduler halves the learning rate (Factor = 0.5) if validation loss plateaus for 3 consecutive epochs. Training terminates if validation accuracy fails to improve for 7 consecutive epochs.
 
 ### 3.2 Dataset Structure & Augmentations (get_dataloaders)
-The dataset script is defined in [src/utils.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/src/utils.py):
+The dataset script is defined in [src/utils.py](src/utils.py):
 * **Dataset**: EMNIST ByClass split containing 62 classes (10 digits, 26 uppercase, 26 lowercase) with 814,255 total samples (Note: Due to the natural class imbalance in ByClass, the system integrates multi-dimensional data augmentations and post-processing lexicon/geometric corrections).
 * **Partitioning**: $90\%$ (628,138 samples) for training, $10\%$ (69,794 samples) for validation, and a distinct test set of 116,323 samples.
 * **Academic Data Augmentations**:
@@ -306,7 +306,7 @@ To rigorously evaluate class-level decision boundaries, an empirical 62-class co
 
 ### 3.5 Ablation Study & Quantitative Performance Gains
 
-To systematically evaluate the individual contribution of preprocessing, network inference, geometric heuristics, and language models to end-to-end recognition performance, the repository provides an automated, strictly reproducible evaluation script: [ablation_benchmark.py](file:///C:/Users/Liu/PycharmProjects/PythonProject3/ablation_benchmark.py). Cumulative ablation experiments were executed across the independent EMNIST ByClass test split and physical handwriting sequences (homoglyph-prone English words, numeric sequences, and structured IDs):
+To systematically evaluate the individual contribution of preprocessing, network inference, geometric heuristics, and language models to end-to-end recognition performance, the repository provides an automated, strictly reproducible evaluation script: [ablation_benchmark.py](ablation_benchmark.py). Cumulative ablation experiments were executed across the independent EMNIST ByClass test split and physical handwriting sequences (homoglyph-prone English words, numeric sequences, and structured IDs):
 
 | Configuration | Core Algorithmic Components | Character Top-1 Acc | End-to-End Sequence Acc | Performance Gain & Architectural Insight |
 | :---: | :--- | :---: | :---: | :--- |
