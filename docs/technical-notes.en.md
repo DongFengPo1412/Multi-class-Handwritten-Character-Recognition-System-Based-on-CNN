@@ -43,7 +43,7 @@ Three 3×3 convolution blocks use channels `1→32→64→128`, BatchNorm/SiLU, 
 Main inference averages Softmax probabilities across nine one-pixel shifts and ±5° rotations:
 
 ```math
-\bar p(c\mid x)=\frac1{11}\sum_{k=1}^{11}\operatorname{softmax}(f(T_kx))_c
+\bar p(c\mid x)=\frac1{11}\sum_{k=1}^{11}\mathrm{softmax}(f(T_kx))_c
 ```
 
 EMNIST ByClass is rotated -90° and horizontally flipped, normalized by mean 0.1736/std 0.3317. Augmentation includes affine/perspective/elastic transforms, brightness/contrast, blur, and erasing. The 90/10 `random_split` has no fixed split seed and shares one augmented dataset between training and validation. Only the independent test dataset uses the clean transform.

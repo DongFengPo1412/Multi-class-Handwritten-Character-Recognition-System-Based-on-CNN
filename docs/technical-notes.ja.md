@@ -43,7 +43,7 @@
 主推論は1画素平行移動9種と±5°回転のSoftmaxを平均します。
 
 ```math
-\bar p(c\mid x)=\frac1{11}\sum_{k=1}^{11}\operatorname{softmax}(f(T_kx))_c
+\bar p(c\mid x)=\frac1{11}\sum_{k=1}^{11}\mathrm{softmax}(f(T_kx))_c
 ```
 
 EMNIST ByClassを-90°回転・水平反転し、平均0.1736／標準偏差0.3317で正規化します。拡張はアフィン・透視・弾性・明度／コントラスト・ぼかし・消去です。90/10の`random_split`は固定シードなしで、学習と検証が同じ拡張付きデータセットを共有します。独立テストだけが拡張なしのtransformです。

@@ -43,7 +43,7 @@
 主推理把9种一像素平移和±5°旋转合为11个变体，平均Softmax：
 
 ```math
-\bar p(c\mid x)=\frac1{11}\sum_{k=1}^{11}\operatorname{softmax}(f(T_kx))_c
+\bar p(c\mid x)=\frac1{11}\sum_{k=1}^{11}\mathrm{softmax}(f(T_kx))_c
 ```
 
 EMNIST ByClass，方向修正为-90°旋转和水平翻转，归一化均值0.1736／标准差0.3317。增强含仿射、透视、弹性、亮度／对比度、模糊、随机擦除。训练90%／验证10%的`random_split`没有固定划分种子，并共享带随机增强的同一个数据集对象；独立测试集使用干净transform。
