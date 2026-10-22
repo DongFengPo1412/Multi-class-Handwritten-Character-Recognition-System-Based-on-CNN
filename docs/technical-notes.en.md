@@ -48,7 +48,7 @@ Main inference averages Softmax probabilities across nine one-pixel shifts and Â
 
 EMNIST ByClass is rotated -90Â° and horizontally flipped, normalized by mean 0.1736/std 0.3317. Augmentation includes affine/perspective/elastic transforms, brightness/contrast, blur, and erasing. The 90/10 `random_split` has no fixed split seed and shares one augmented dataset between training and validation. Only the independent test dataset uses the clean transform.
 
-Training specifies batch 128, Adam lr 0.001/weight_decay1e-4, label smoothing 0.1, loss scheduler patience 3/factor 0.5, at most 25 epochs, accuracy-based early stopping after 7 stagnant epochs, and CUDA AMP. Configuration and GPU log strings do not prove the actual hardware, completed epochs, or results.
+Training specifies batch 128, Adam lr 0.001/weight_decay 1e-4, label smoothing 0.1, loss scheduler patience 3/factor 0.5, at most 25 epochs, accuracy-based early stopping after 7 stagnant epochs, and CUDA AMP. Configuration and GPU log strings do not prove the actual hardware, completed epochs, or results.
 
 <a id="decoding"></a>
 
