@@ -4,7 +4,7 @@ Camera-based alphanumeric OCR with character segmentation, geometric constraints
 
 [简体中文](README.md) · **English** · [日本語](README_JA.md)
 
-**Explore：** [Technical notes](docs/technical-notes.en.md) · [Setup and operation](docs/setup.en.md)
+**Explore:** [Technical notes](docs/technical-notes.en.md) · [Setup and operation](docs/setup.en.md)
 
 A PyTorch 62-class CNN is integrated with OpenCV preprocessing, line-band segmentation, normalized character crops, test-time augmentation, and a Tkinter workbench. The project explores the engineering gap between isolated-glyph classification and an inspectable text pipeline. Baidu handwriting OCR is an optional cloud reference, not training data for the local CNN.
 
