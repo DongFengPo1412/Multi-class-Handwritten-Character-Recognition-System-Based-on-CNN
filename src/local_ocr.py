@@ -588,23 +588,23 @@ class LocalOCRResult:
 
 
 class LocalOCRRecognizer:
-    def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = HandwrittenCNN(num_classes=62).to(self.device)
-        
+    def __init__(self, weights_path=None, *, device=None, warmup=True):
         project_root = Path(__file__).resolve().parent.parent
-        weights_path = project_root / "checkpoints" / "emnist_model.pth"
-        if not weights_path.exists():
-            weights_path = Path("checkpoints/emnist_model.pth")
-            
+        weights_path = Path(weights_path) if weights_path is not None else project_root / "checkpoints/emnist_model.pth"
+        if not weights_path.is_file():
+            raise FileNotFoundError(f"CNN checkpoint is required: {weights_path}. No random-model fallback is used.")
+        self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model = HandwrittenCNN(num_classes=62).to(self.device)
         try:
-            self.model.load_state_dict(torch.load(weights_path, map_location=self.device))
+            self.model.load_state_dict(torch.load(weights_path, map_location=self.device, weights_only=True))
             print(f"[+] LocalOCRRecognizer: Loaded CNN weights from {weights_path}.")
         except Exception as e:
-            print(f"[-] LocalOCRRecognizer: Failed to load CNN weights: {e}")
+            raise RuntimeError(f"Cannot load compatible CNN checkpoint: {weights_path}") from e
             
         self.model.eval()
         self.corrector = HandwrittenCorrector()
+        if not warmup:
+            return
         
         # Model Warmup to eliminate first-use inference latency
         try:

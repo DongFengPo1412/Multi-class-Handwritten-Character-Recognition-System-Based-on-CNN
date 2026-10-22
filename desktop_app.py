@@ -627,7 +627,13 @@ class OCRDesktopApp:
 
 def main():
     root = tk.Tk()
-    OCRDesktopApp(root)
+    try:
+        OCRDesktopApp(root)
+    except (FileNotFoundError, RuntimeError) as exc:
+        from tkinter import messagebox
+        messagebox.showerror("OCR initialization failed", str(exc), parent=root)
+        root.destroy()
+        return 1
     root.mainloop()
 
 

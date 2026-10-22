@@ -67,8 +67,14 @@ The former has three segmentation assertions, the latter seven constructed-proba
 
 | Symptom | Inspect |
 | :--- | :--- |
-| GUI works but text looks random | Weight path/shape and load logs; loading errors do not abort. |
+| Initialization fails | Supply a compatible HandwrittenCNN checkpoint; missing/corrupt weights stop local initialization rather than producing random predictions. |
 | Wrong text correction | Segmentation order, global height, format detection, out-of-lexicon names. |
 | Dark preview differs from inference | Distinct preprocessing implementations. |
 | Slow result display | CNN/cloud in one worker, 80 ms polling, actual hardware; no fixed latency. |
 | Fresh training fails | Torch/torchvision versions, scheduler API, downloads, Windows multiprocessing. |
+
+2026-10-23 fixes: missing or incompatible checkpoints abort initialization, with a desktop error dialog, instead of random-model inference. Seven new reliability tests plus the existing three segmentation assertions and seven correction cases passed. No retraining, camera evaluation, or cloud request was performed. Real-photo evaluation and checkpoint/data versioning remain future work.
+
+```powershell
+python -B -m unittest discover -s tests -v
+```

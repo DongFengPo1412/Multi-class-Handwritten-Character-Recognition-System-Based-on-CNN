@@ -1,6 +1,7 @@
 import torch
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset
+import random
 import numpy as np
 
 # EMNIST ByClass 的映射表 (62类：0-9, A-Z, a-z)
@@ -16,7 +17,23 @@ class EMNISTRotateFlip:
         return img
 
 
-def get_dataloaders(batch_size=128):
+def split_train_validation(train_dataset, validation_dataset, seed=42):
+    """Share disjoint indices, never a stochastic training transform."""
+    if len(train_dataset) != len(validation_dataset):
+        raise ValueError("Training and validation views must contain the same samples")
+    n = len(train_dataset)
+    indices = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
+    cut = int(0.9 * n)
+    return Subset(train_dataset, indices[:cut]), Subset(validation_dataset, indices[cut:])
+
+
+def seed_worker(_worker_id):
+    seed = torch.initial_seed() % (2 ** 32)
+    np.random.seed(seed)
+    random.seed(seed)
+
+
+def get_dataloaders(batch_size=128, *, seed=42, num_workers=4, data_root='./data', download=True):
     # 使用双线性插值 (BILINEAR) 提高缩放后的平滑度
     interp = transforms.InterpolationMode.BILINEAR
 
@@ -51,25 +68,26 @@ def get_dataloaders(batch_size=128):
     ])
 
     # 加载原始 EMNIST 数据集 [cite: 8, 16]
-    full_train_set = datasets.EMNIST('./data', split='byclass', train=True, download=True, transform=train_transform)
-    test_set = datasets.EMNIST('./data', split='byclass', train=False, download=True, transform=val_transform)
+    full_train_set = datasets.EMNIST(data_root, split='byclass', train=True, download=download, transform=train_transform)
+    validation_view = datasets.EMNIST(data_root, split='byclass', train=True, download=False, transform=val_transform)
+    test_set = datasets.EMNIST(data_root, split='byclass', train=False, download=download, transform=val_transform)
 
     # 3. 算法优化：切分 10% 训练数据作为验证集，执行模型选择与性能监控
-    train_size = int(0.9 * len(full_train_set))
-    val_size = len(full_train_set) - train_size
-    train_set, val_set = random_split(full_train_set, [train_size, val_size])
+    train_set, val_set = split_train_validation(full_train_set, validation_view, seed)
 
     # 4. 针对 RTX 4060 与 Windows 环境的数据加载加速
     # pin_memory 加速数据上传至 GPU，persistent_workers 保持子进程活跃减少开销
     loader_args = {
         'batch_size': batch_size,
-        'num_workers': 4,
-        'pin_memory': True,
-        'persistent_workers': True if torch.cuda.is_available() else False
+        'num_workers': num_workers,
+        'pin_memory': torch.cuda.is_available(),
+        'persistent_workers': num_workers > 0,
+        'worker_init_fn': seed_worker,
     }
 
-    train_loader = DataLoader(train_set, shuffle=True, **loader_args)
-    val_loader = DataLoader(val_set, shuffle=False, **loader_args)
-    test_loader = DataLoader(test_set, batch_size=1000, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_set, shuffle=True, generator=torch.Generator().manual_seed(seed), **loader_args)
+    val_loader = DataLoader(val_set, shuffle=False, generator=torch.Generator().manual_seed(seed + 1), **loader_args)
+    test_loader = DataLoader(test_set, batch_size=1000, shuffle=False, num_workers=num_workers,
+                             worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(seed + 2))
 
     return train_loader, val_loader, test_loader

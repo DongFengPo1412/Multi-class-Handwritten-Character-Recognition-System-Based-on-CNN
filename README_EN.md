@@ -59,7 +59,7 @@ Space recognizes/resumes; Enter/Esc resumes; C switches cameras; B toggles the c
 
 The local vocabulary is `0–9/A–Z/a–z`, without Chinese, punctuation, or an end-to-end cursive sequence model. Segmentation, layout, and correction are heuristics that can split, merge, or rewrite text incorrectly.
 
-Training/validation currently share stochastic augmentation. Ablation stages use different populations and label-derived geometry. Fix evaluation design and record checkpoint/data versions before measuring real light/dark-background inputs. Unsupported 22.6 ms, fixed 30 FPS, hard-real-time, and complete-overfitting-prevention claims are not retained.
+Training/validation use disjoint 90/10 indices with seed 42 and separate dataset views; validation has no stochastic augmentation. Training and DataLoader workers are seeded. Historical curves were not regenerated, and these fixes do not establish an accuracy improvement. 2026-10-23 fixes: missing or incompatible checkpoints abort initialization, with a desktop error dialog, instead of random-model inference. Seven new reliability tests plus the existing three segmentation assertions and seven correction cases passed. No retraining, camera evaluation, or cloud request was performed. Real-photo evaluation and checkpoint/data versioning remain future work.
 
 ## Attribution and license
 

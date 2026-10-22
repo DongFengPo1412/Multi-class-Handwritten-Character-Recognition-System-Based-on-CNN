@@ -196,7 +196,7 @@ class HandwrittenCorrector:
         best_word = None
         max_log_prob = -9999.0
         
-        for word in candidates:
+        for word in pruned_candidates:
             log_prob_sum = 0.0
             for i, char in enumerate(word):
                 prob_char = adjusted_probs[i]

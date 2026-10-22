@@ -7,14 +7,19 @@ from src.utils import get_dataloaders, label_map
 import os
 import time
 import shutil
+import random
+import numpy as np
 
 
 
 
-def train():
+def train(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     # 1. 环境初始化
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[Info] 深度学习引擎启动 | 设备: {device} (RTX 4060 加速已就绪)")
+    print(f"[Info] Training device: {device}; seed={seed}")
 
     # 1.5 安全备份：如果已有已训练的模型权重，自动备份以防意外覆盖破坏
     if os.path.exists("checkpoints/emnist_model.pth"):
@@ -25,7 +30,7 @@ def train():
             print(f"  [Backup Warning] 备份原有权重失败: {e}")
 
     # 2. 获取数据加载器 (对应优化的 utils.py，包含 10% 验证集)
-    train_loader, val_loader, test_loader = get_dataloaders(batch_size=128)
+    train_loader, val_loader, test_loader = get_dataloaders(batch_size=128, seed=seed)
 
     # 2.5 导出数据增强样例 (对应 Requirement 1 预处理，用于 PPT 报告)
     try:

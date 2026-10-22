@@ -46,7 +46,7 @@ Main inference averages Softmax probabilities across nine one-pixel shifts and Â
 \bar p(c\mid x)=\frac1{11}\sum_{k=1}^{11}\mathrm{softmax}(f(T_kx))_c
 ```
 
-EMNIST ByClass is rotated -90Â° and horizontally flipped, normalized by mean 0.1736/std 0.3317. Augmentation includes affine/perspective/elastic transforms, brightness/contrast, blur, and erasing. The 90/10 `random_split` has no fixed split seed and shares one augmented dataset between training and validation. Only the independent test dataset uses the clean transform.
+Training/validation use disjoint 90/10 indices with seed 42 and separate dataset views; validation has no stochastic augmentation. Training and DataLoader workers are seeded. Historical curves were not regenerated, and these fixes do not establish an accuracy improvement.
 
 Training specifies batch 128, Adam lr 0.001/weight_decay 1e-4, label smoothing 0.1, loss scheduler patience 3/factor 0.5, at most 25 epochs, accuracy-based early stopping after 7 stagnant epochs, and CUDA AMP. Configuration and GPU log strings do not prove the actual hardware, completed epochs, or results.
 
@@ -62,7 +62,7 @@ Lexicon search uses **equal-length** candidates and summed case probabilities. I
 W^*=\arg\max_{W\in D_N}\sum_{i=1}^{N}\ln\left(p_i(w_i^{lower})+p_i(w_i^{upper})+10^{-12}\right)
 ```
 
-`pruned_candidates` is computed, but scoring still loops over `candidates`. It is inaccurate to claim all candidates receive effective edit-distance pruning, O(1) decoding, or lossless 0.12 ms processing.
+Scoring now iterates over `pruned_candidates`, not the full candidate list. No O(1) decoding, fixed latency, or lossless speedup is claimed.
 
 Length/count rules select 18-character ID-like, 11-character phone-like, plate-like, alphabetic, or numeric masks. They do not validate checksums, real phone numbers, or Chinese province characters. A wrongly inferred format can overconstrain output.
 
@@ -97,6 +97,6 @@ These are not current camera metrics. M1 adds random shifts; M2 directly uses da
 
 Three segmentation assertions and seven correction cases passed this audit without camera, cloud, or real-model evaluation. Source tracing establishes algorithms/configuration/GUI paths; ignored local weights do not mean models ship with Git clones.
 
-Static parsing passed for 17 of 18 tracked Python files. Historical standalone `baiduocr/demo2.py` has a syntax error at line 45 and is not a ready-to-run reproduction entry. The main pipeline and the checks above parse successfully.
+The former `demo2.py` is a multilingual API document, preserved as `baiduocr/baidu_api_examples.md`. Current Python sources pass static parsing.
 
-Priorities are an independent validation transform/fixed split, measured geometry on camera samples, identical stage populations and case rules, then candidate-loop and failed-loading corrections. Core source is unchanged. Separate individual contributions from external algorithms/data rather than presenting library capabilities as measured innovations.
+2026-10-23 fixes: missing or incompatible checkpoints abort initialization, with a desktop error dialog, instead of random-model inference. Seven new reliability tests plus the existing three segmentation assertions and seven correction cases passed. No retraining, camera evaluation, or cloud request was performed. Real-photo evaluation and checkpoint/data versioning remain future work.
