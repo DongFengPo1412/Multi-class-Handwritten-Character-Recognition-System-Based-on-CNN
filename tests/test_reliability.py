@@ -1,4 +1,6 @@
 import tempfile
+import os
+from contextlib import contextmanager
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -12,6 +14,13 @@ from src.corrector import HandwrittenCorrector, char_to_idx
 from src.utils import split_train_validation, get_dataloaders
 
 
+@contextmanager
+def retained_test_directory():
+    root = Path(os.environ.get('OCR_TEST_TMP', Path.home() / '.codex/cache/tasks/ocr-tests'))
+    root.mkdir(parents=True, exist_ok=True)
+    yield tempfile.mkdtemp(dir=root)
+
+
 class FakeEMNIST:
     def __init__(self, root, split, train, download, transform): self.transform = transform
     def __len__(self): return 100
@@ -21,18 +30,18 @@ class FakeEMNIST:
 
 class ReliabilityTests(unittest.TestCase):
     def test_missing_checkpoint_refuses_inference(self):
-        with tempfile.TemporaryDirectory() as d:
+        with retained_test_directory() as d:
             with self.assertRaises(FileNotFoundError):
                 LocalOCRRecognizer(Path(d)/'missing.pth', device='cpu', warmup=False)
 
     def test_corrupt_checkpoint_refuses_inference(self):
-        with tempfile.TemporaryDirectory() as d:
+        with retained_test_directory() as d:
             p = Path(d)/'broken.pth'; p.write_bytes(b'not a state dictionary')
             with self.assertRaises(RuntimeError): LocalOCRRecognizer(p, device='cpu', warmup=False)
 
     def test_compatible_state_dict_loads_in_eval_mode(self):
         # Random fixture tests loading/schema only, not recognition accuracy.
-        with tempfile.TemporaryDirectory() as d:
+        with retained_test_directory() as d:
             p = Path(d)/'fixture.pth'; torch.save(HandwrittenCNN(62).state_dict(), p)
             r = LocalOCRRecognizer(p, device='cpu', warmup=False)
             self.assertFalse(r.model.training)

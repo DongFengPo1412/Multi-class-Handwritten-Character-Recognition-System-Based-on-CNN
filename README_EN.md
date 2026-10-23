@@ -46,7 +46,7 @@ Three segmentation assertions and seven correction cases passed in this audit. T
 ## Quick start
 
 1. Use Python 3.10+ with Tkinter and install `requirements.txt`; select compatible Torch/torchvision builds for the actual device.
-2. Supply `checkpoints/emnist_model.pth` matching `HandwrittenCNN`. Weights/data exist locally but are ignored by Git and absent from a fresh clone.
+2. Obtain the compatible [historical checkpoint with hash verification](docs/checkpoint.en.md). Weights are a Release asset rather than a Git blob; existing local files are not overwritten.
 3. From the repository root:
 
 ```powershell

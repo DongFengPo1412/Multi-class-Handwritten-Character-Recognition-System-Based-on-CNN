@@ -46,7 +46,7 @@ flowchart LR
 ## クイックスタート
 
 1. Tkinter対応Python3.10+で`requirements.txt`を導入し、実機に合うTorch／torchvisionを選びます。
-2. `HandwrittenCNN`に対応する`checkpoints/emnist_model.pth`を用意します。重み・データは本機にありますがGit対象外で、新規クローンには含まれません。
+2. [過去のチェックポイントとハッシュ検証](docs/checkpoint.ja.md)に従い対応重みを取得します。Git本体ではなくRelease資産で、既存ファイルを上書きしません。
 3. リポジトリのルートで実行します。
 
 ```powershell

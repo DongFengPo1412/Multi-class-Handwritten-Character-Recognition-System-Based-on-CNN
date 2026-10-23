@@ -46,7 +46,7 @@ flowchart LR
 ## 快速开始
 
 1. 在支持 Tkinter 的 Python 3.10+ 环境安装 `requirements.txt`，按实际 GPU 选择兼容的 PyTorch／torchvision。
-2. 准备匹配 `HandwrittenCNN` 的 `checkpoints/emnist_model.pth`。权重和数据在本机存在，但未纳入 Git；新克隆不会自动获得。
+2. 通过[历史权重发布与校验](docs/checkpoint.zh-CN.md)获取匹配检查点；权重作为 Release 资产提供，仍不纳入 Git。已有本机权重不会被自动覆盖。
 3. 在仓库根目录运行：
 
 ```powershell

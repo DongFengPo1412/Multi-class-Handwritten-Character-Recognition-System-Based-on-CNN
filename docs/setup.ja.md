@@ -18,7 +18,7 @@
 └── docs/       # 三言語ガイドと既存画像
 ```
 
-`data/`、`checkpoints/*.pth`、`baiduocr/key.txt`はGit対象外です。対応する62クラス重みを別途用意し、読込失敗後の出力を学習済み結果とは扱いません。
+`data/`、`checkpoints/*.pth`、`baiduocr/key.txt` は無視対象です。[重みの案内](checkpoint.ja.md)に従い過去のRelease資産を検証・取得します。マニフェストのみを追跡し、重みはGit外です。
 
 <a id="environment"></a>
 

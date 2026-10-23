@@ -18,7 +18,7 @@
 └── docs/       # trilingual guides and existing images
 ```
 
-`data/`, `checkpoints/*.pth`, and `baiduocr/key.txt` are ignored. Supply compatible 62-class weights; outputs after a loading failure are not trained-model results.
+`data/`, `checkpoints/*.pth` and `baiduocr/key.txt` remain ignored. Follow the [checkpoint guide](checkpoint.en.md) to download and verify the historical Release asset; its manifest is tracked, its weights are not.
 
 <a id="environment"></a>
 

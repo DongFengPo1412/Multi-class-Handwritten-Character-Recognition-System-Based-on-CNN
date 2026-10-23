@@ -18,7 +18,7 @@
 └── docs/       # 三语言指南与既有图片
 ```
 
-`data/`、`checkpoints/*.pth`和`baiduocr/key.txt`未跟踪。匹配62类结构的权重需自行准备，不能把未加载权重后的输出当成训练模型结果。
+`data/`、`checkpoints/*.pth` 与 `baiduocr/key.txt` 仍被忽略。可按[权重发布指南](checkpoint.zh-CN.md)从 Release 下载并校验历史检查点；清单纳入 Git，模型不纳入 Git。
 
 <a id="environment"></a>
 

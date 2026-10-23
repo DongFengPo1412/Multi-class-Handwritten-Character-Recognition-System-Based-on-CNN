@@ -148,6 +148,7 @@ cython_debug/
 data/
 checkpoints/*
 !checkpoints/ablation_benchmark_results.json
+!checkpoints/checkpoint-manifest.json
 
 # OS files
 .DS_Store
