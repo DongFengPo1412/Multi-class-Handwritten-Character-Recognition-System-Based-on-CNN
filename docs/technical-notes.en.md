@@ -66,7 +66,7 @@ Scoring now iterates over `pruned_candidates`, not the full candidate list. No O
 
 Length/count rules select 18-character ID-like, 11-character phone-like, plate-like, alphabetic, or numeric masks. They do not validate checksums, real phone numbers, or Chinese province characters. A wrongly inferred format can overconstrain output.
 
-GUI 30 ms is an additional callback delay, and results are polled every 80 ms; neither guarantees 30 FPS or 22.6 ms. One worker executes local then cloud processing, so the optional request delays joint display. Checkpoint-load failure only prints an error and leaves initialized parameters active; verify successful loading before use.
+GUI 30 ms is an additional callback delay, and results are polled every 80 ms; neither guarantees 30 FPS or 22.6 ms. One worker executes local then cloud processing, so the optional request delays joint display. Missing or incompatible weights abort initialization with an error, shown by the desktop entry as a dialog; inference never falls back to randomly initialized weights.
 
 <a id="evaluation"></a>
 
@@ -99,4 +99,4 @@ Three segmentation assertions and seven correction cases passed this audit witho
 
 The former `demo2.py` is a multilingual API document, preserved as `baiduocr/baidu_api_examples.md`. Current Python sources pass static parsing.
 
-2026-10-23 fixes: missing or incompatible checkpoints abort initialization, with a desktop error dialog, instead of random-model inference. Seven new reliability tests plus the existing three segmentation assertions and seven correction cases passed. No retraining, camera evaluation, or cloud request was performed. Real-photo evaluation and checkpoint/data versioning remain future work.
+2026-10-23 fixes: missing or incompatible checkpoints abort initialization, with a desktop error dialog, instead of random-model inference. Seven new reliability tests plus the existing three segmentation assertions and seven correction cases passed. No retraining, camera evaluation, or cloud request was performed. The historical checkpoint now has a versioned release, byte size and SHA-256; see [checkpoint notes](checkpoint.en.md). Independent real-photo evaluation and dataset versioning remain future work.
