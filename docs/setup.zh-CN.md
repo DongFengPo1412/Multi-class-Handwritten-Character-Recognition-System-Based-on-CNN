@@ -18,7 +18,7 @@
 └── docs/       # 三语言指南与既有图片
 ```
 
-`data/`、`checkpoints/*.pth` 与 `baiduocr/key.txt` 仍被忽略。[权重说明](checkpoint.zh-CN.md)列出当前模型要求；公开二进制发布尚待明确许可，当前清单不会触发下载。
+`data/`、`checkpoints/*.pth` 与 `baiduocr/key.txt` 仍被忽略。可按[权重发布指南](checkpoint.zh-CN.md)从 Release 下载并校验历史检查点；清单纳入 Git，模型不纳入 Git。
 
 <a id="environment"></a>
 
@@ -73,7 +73,7 @@ python src/test_new_patterns.py
 | 结果显示很慢 | 单工作线程中的CNN及云请求、80 ms轮询、实际硬件；无固定时延保证。 |
 | 新环境训练报错 | Torch/torchvision版本、scheduler接口、数据下载和Windows多进程。 |
 
-2026-10-23修复：缺失或不兼容权重立即报错，不使用随机模型继续识别；桌面入口给出初始化错误。7项新增可靠性测试、原3项分割断言和7组纠错用例通过，没有重新训练、相机评测或云请求。后续需要独立真实照片评测与数据/权重版本记录。
+2026-10-23修复：缺失或不兼容权重立即报错，不使用随机模型继续识别；桌面入口给出初始化错误。7项新增可靠性测试、原3项分割断言和7组纠错用例通过，没有重新训练、相机评测或云请求。后续需要独立真实照片评测与数据版本记录。
 
 ```powershell
 python -B -m unittest discover -s tests -v

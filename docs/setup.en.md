@@ -18,7 +18,7 @@
 └── docs/       # trilingual guides and existing images
 ```
 
-`data/`, `checkpoints/*.pth` and `baiduocr/key.txt` remain ignored. [Checkpoint notes](checkpoint.en.md) describe the model requirements. Public binary distribution awaits explicit permission; the current manifest does not enable a download.
+`data/`, `checkpoints/*.pth` and `baiduocr/key.txt` remain ignored. Follow the [checkpoint guide](checkpoint.en.md) to download and verify the historical Release asset; its manifest is tracked, its weights are not.
 
 <a id="environment"></a>
 
@@ -73,7 +73,7 @@ The former has three segmentation assertions, the latter seven constructed-proba
 | Slow result display | CNN/cloud in one worker, 80 ms polling, actual hardware; no fixed latency. |
 | Fresh training fails | Torch/torchvision versions, scheduler API, downloads, Windows multiprocessing. |
 
-2026-10-23 fixes: missing or incompatible checkpoints abort initialization, with a desktop error dialog, instead of random-model inference. Seven new reliability tests plus the existing three segmentation assertions and seven correction cases passed. No retraining, camera evaluation, or cloud request was performed. Real-photo evaluation and checkpoint/data versioning remain future work.
+2026-10-23 fixes: missing or incompatible checkpoints abort initialization, with a desktop error dialog, instead of random-model inference. Seven new reliability tests plus the existing three segmentation assertions and seven correction cases passed. No retraining, camera evaluation, or cloud request was performed. Real-photo evaluation and dataset versioning remain future work.
 
 ```powershell
 python -B -m unittest discover -s tests -v

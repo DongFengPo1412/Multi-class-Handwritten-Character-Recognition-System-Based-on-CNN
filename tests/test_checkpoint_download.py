@@ -13,7 +13,9 @@ from tools.download_checkpoint import download
 
 class CheckpointDownloadTests(unittest.TestCase):
     def setUp(self):
-        self.directory = Path(tempfile.mkdtemp(dir=os.environ["OCR_TEST_TMP"]))
+        root = Path(os.environ.get("OCR_TEST_TMP", Path.home() / ".codex/cache/tasks/ocr-tests"))
+        root.mkdir(parents=True, exist_ok=True)
+        self.directory = Path(tempfile.mkdtemp(dir=root))
         self.target = self.directory / "weights.pth"
         self.manifest = {"url": "https://example.invalid/weights", "size_bytes": 4,
                          "sha256": hashlib.sha256(b"data").hexdigest()}
