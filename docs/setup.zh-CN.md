@@ -18,7 +18,7 @@
 └── docs/       # 三语言指南与既有图片
 ```
 
-`data/`、`checkpoints/*.pth` 与 `baiduocr/key.txt` 仍被忽略。可按[权重发布指南](checkpoint.zh-CN.md)从 Release 下载并校验历史检查点；清单纳入 Git，模型不纳入 Git。
+`data/`、`checkpoints/*.pth` 与 `baiduocr/key.txt` 仍被忽略。[权重说明](checkpoint.zh-CN.md)列出当前模型要求；公开二进制发布尚待明确许可，当前清单不会触发下载。
 
 <a id="environment"></a>
 

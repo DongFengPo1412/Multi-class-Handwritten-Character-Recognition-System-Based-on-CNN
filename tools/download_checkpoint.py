@@ -22,6 +22,8 @@ def checksum(path):
 
 
 def download(manifest, destination, cache_dir, opener=urlopen):
+    if manifest.get("publication_status") == "pending":
+        raise RuntimeError("Checkpoint publication is pending explicit permission; no public download is available")
     size = manifest["size_bytes"]
     expected = manifest["sha256"]
     if type(size) is not int or not 0 < size <= 100 * 1024 * 1024:

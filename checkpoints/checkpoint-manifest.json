@@ -1,10 +1,9 @@
 {
-  "name": "emnist62-historical-20260616",
-  "filename": "emnist_model.pth",
-  "url": "https://github.com/DongFengPo1412/Multi-class-Handwritten-Character-Recognition-System-Based-on-CNN/releases/download/emnist62-checkpoint-20260616/emnist_model.pth",
-  "sha256": "2cdf4b6300027ca1fb8202832fcfea37906b10b2094acf464f6c81b899113928",
-  "size_bytes": 13356700,
+  "publication_status": "pending",
+  "url": null,
+  "sha256": null,
+  "size_bytes": null,
   "architecture": "src.model.HandwrittenCNN(num_classes=62)",
   "labels": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-  "status": "Historical local checkpoint; strict structure and finite output checked; not retrained or re-evaluated in this release."
+  "status": "Public binary release requires explicit permission; no download is currently available."
 }

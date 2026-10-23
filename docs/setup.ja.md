@@ -18,7 +18,7 @@
 └── docs/       # 三言語ガイドと既存画像
 ```
 
-`data/`、`checkpoints/*.pth`、`baiduocr/key.txt` は無視対象です。[重みの案内](checkpoint.ja.md)に従い過去のRelease資産を検証・取得します。マニフェストのみを追跡し、重みはGit外です。
+`data/`、`checkpoints/*.pth`、`baiduocr/key.txt` は無視対象です。[重みの説明](checkpoint.ja.md)を参照してください。バイナリの公開は明示許可待ちで、現在のマニフェストから取得はできません。
 
 <a id="environment"></a>
 

@@ -22,6 +22,12 @@ class CheckpointDownloadTests(unittest.TestCase):
         return download(self.manifest, self.target, self.directory / "cache",
                         opener=lambda *args, **kwargs: io.BytesIO(data))
 
+    def test_pending_release_never_opens_network(self):
+        with self.assertRaises(RuntimeError):
+            download({"publication_status": "pending"}, self.target, self.directory / "cache",
+                     opener=lambda *args, **kwargs: self.fail("unexpected network"))
+        self.assertFalse(self.target.exists())
+
     def test_verified_bytes_installed(self):
         self.run_download(b"data")
         self.assertEqual(self.target.read_bytes(), b"data")

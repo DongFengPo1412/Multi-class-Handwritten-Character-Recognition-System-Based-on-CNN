@@ -18,7 +18,7 @@
 └── docs/       # trilingual guides and existing images
 ```
 
-`data/`, `checkpoints/*.pth` and `baiduocr/key.txt` remain ignored. Follow the [checkpoint guide](checkpoint.en.md) to download and verify the historical Release asset; its manifest is tracked, its weights are not.
+`data/`, `checkpoints/*.pth` and `baiduocr/key.txt` remain ignored. [Checkpoint notes](checkpoint.en.md) describe the model requirements. Public binary distribution awaits explicit permission; the current manifest does not enable a download.
 
 <a id="environment"></a>
 

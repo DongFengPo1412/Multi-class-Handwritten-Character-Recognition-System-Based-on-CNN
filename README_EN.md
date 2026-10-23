@@ -46,7 +46,7 @@ Three segmentation assertions and seven correction cases passed in this audit. T
 ## Quick start
 
 1. Use Python 3.10+ with Tkinter and install `requirements.txt`; select compatible Torch/torchvision builds for the actual device.
-2. Obtain the compatible [historical checkpoint with hash verification](docs/checkpoint.en.md). Weights are a Release asset rather than a Git blob; existing local files are not overwritten.
+2. Supply a compatible `checkpoints/emnist_model.pth`; see [checkpoint reproduction notes](docs/checkpoint.en.md). No public checkpoint download is currently provided; existing local weights are preserved.
 3. From the repository root:
 
 ```powershell
