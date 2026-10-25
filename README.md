@@ -1,68 +1,68 @@
 # Handwritten Character Recognition and Correction
 
-面向数字及大小写英文字母的相机 OCR、字符分割与词典／几何纠错实验系统。
+Camera-based alphanumeric OCR with character segmentation, geometric constraints, and lexicon decoding.
 
-**简体中文** · [English](README_EN.md) · [日本語](README_JA.md)
+[简体中文](README_ZH.md) · **English** · [日本語](README_JA.md)
 
-**深入阅读：** [技术说明](docs/technical-notes.zh-CN.md) · [部署与操作](docs/setup.zh-CN.md)
+**Explore:** [Technical notes](docs/technical-notes.en.md) · [Setup and operation](docs/setup.en.md)
 
-项目以 PyTorch 的 62 类 CNN 为单字分类器，将 OpenCV 图像预处理、行带分割、字符归一化、测试时增强和规则纠错接入 Tkinter 工作台。重点是把单字分类扩展为可观察、可交互的文字序列处理流程；百度手写 OCR 是可选的云端参考，不参与本地 CNN 训练。
+A PyTorch 62-class CNN is integrated with OpenCV preprocessing, line-band segmentation, normalized character crops, test-time augmentation, and a Tkinter workbench. The project explores the engineering gap between isolated-glyph classification and an inspectable text pipeline. Baidu handwriting OCR is an optional cloud reference, not training data for the local CNN.
 
-## 处理流程
+## Processing pipeline
 
 ```mermaid
 flowchart LR
-    Camera[相机 ROI] --> Pre[背景与二值化处理]
-    Pre --> Boxes[行带与字符框]
-    Boxes --> CNN[28x28 CNN 与 TTA]
-    CNN --> Decode[几何与词典纠错]
-    Decode --> UI[Tkinter 结果与调试]
-    Camera --> Cloud[可选百度云 OCR]
+    Camera[Camera ROI] --> Pre[Background and threshold processing]
+    Pre --> Boxes[Line bands and character boxes]
+    Boxes --> CNN[28x28 CNN and TTA]
+    CNN --> Decode[Geometry and lexicon decoding]
+    Decode --> UI[Tkinter results and diagnostics]
+    Camera --> Cloud[Optional Baidu cloud OCR]
     Cloud --> UI
 ```
 
-主入口是 `desktop_app.py`。相机预览在 GUI 线程更新，按空格定格后把 ROI 交给一个后台工作线程；本地处理完成后才请求可选云端 OCR，二者不是并行返回。
+`desktop_app.py` is the primary entry. The GUI updates the camera preview; Space freezes an ROI for one background worker. Local processing precedes the optional cloud call, so the two results are not returned independently in parallel.
 
-## 核心功能与工程设计
+## Features and engineering
 
-| 模块 | 实际实现 |
+| Module | Implementation |
 | :--- | :--- |
-| 图像适应 | 边缘灰度判断背景；亮底走背景除法、CLAHE、自适应阈值，暗底走滤波与 Otsu。 |
-| 字符分割 | 水平投影行带、行内轮廓、迭代框合并、宽框投影切分、横／竖阅读顺序启发式。 |
-| 分类推理 | 三卷积块、SiLU、BatchNorm、Dropout；单字28×28，62类；9平移+2旋转的平均概率。 |
-| 规则纠错 | 长宽比、全局相对高度、形近数字折叠、同长度英文词典对数似然和格式概率掩码。 |
-| 工作台 | 原始／修正／云端结果、低置信度Top-3、二值图、编号字符框、定格／恢复与相机切换。 |
+| Image adaptation | Border brightness selects background division/CLAHE/adaptive thresholding for light backgrounds or filtering/Otsu for dark ones. |
+| Segmentation | Horizontal line projections, per-band contours, iterative box merging, wide-box projection splitting, and reading-order heuristics. |
+| Classification | Three convolution blocks, SiLU, BatchNorm, Dropout; 28×28 input and 62 classes; probabilities averaged across nine shifts and two rotations. |
+| Correction | Aspect ratio, global relative height, digit-to-letter confusions, same-length lexicon likelihoods, and format masks. |
+| Workbench | Raw/corrected/cloud text, uncertain Top-3 candidates, threshold preview, numbered boxes, freeze/resume, and camera switching. |
 
-[源码、网络结构与公式](docs/technical-notes.zh-CN.md)。词典方法不是生成式语言模型；格式掩码也不是完整证件校验或汉字车牌识别。
+See [source, architecture, and equations](docs/technical-notes.en.md). Lexicon decoding is not a generative language model; masks are neither complete identity validation nor Chinese plate recognition.
 
-## 展示与验证范围
+## Demonstration and evidence
 
-![历史桌面工作台截图](docs/images/demo_multiline_letters.png)
+![Historical desktop workbench](docs/images/demo_multiline_letters.png)
 
-仓库保留数字、多行字母、手机号及混合序列截图，以及训练曲线和混淆矩阵图片。它们展示历史界面与结果，不单独证明准确率或当前版本的性能。
+Stored screenshots cover digits, multiple lines, phone-like strings, and mixed sequences. Curves and confusion-matrix images are historical illustrations, not independent proof of current accuracy or speed.
 
-本轮执行了3项分割断言及7组纠错用例，均通过。没有重新训练、进行摄像头实测或调用云接口。历史消融 JSON 有记录，但其合成序列和真值几何条件不能作为真实相机端到端成绩；[评测范围](docs/technical-notes.zh-CN.md#evaluation)保留原数值和限制。
+Three segmentation assertions and seven correction cases passed in this audit. Training, camera trials, and cloud calls were not rerun. The historical ablation JSON is retained with its [evaluation limits](docs/technical-notes.en.md#evaluation): synthetic sequences and ground-truth-derived geometry do not establish camera-to-text accuracy.
 
-## 快速开始
+## Quick start
 
-1. 在支持 Tkinter 的 Python 3.10+ 环境安装 `requirements.txt`，按实际 GPU 选择兼容的 PyTorch／torchvision。
-2. 通过[历史权重发布与校验](docs/checkpoint.zh-CN.md)获取匹配检查点；权重作为 Release 资产提供，仍不纳入 Git。已有本机权重不会被自动覆盖。
-3. 在仓库根目录运行：
+1. Use Python 3.10+ with Tkinter and install `requirements.txt`; select compatible Torch/torchvision builds for the actual device.
+2. Obtain the compatible [historical checkpoint with hash verification](docs/checkpoint.en.md). Weights are a Release asset rather than a Git blob; existing local files are not overwritten.
+3. From the repository root:
 
 ```powershell
 python desktop_app.py
 ```
 
-Space 识别／恢复，Enter/Esc 恢复，C 切换相机，B 切换云端参考，Q 退出。[完整操作、凭证和训练说明](docs/setup.zh-CN.md)。
+Space recognizes/resumes; Enter/Esc resumes; C switches cameras; B toggles the cloud reference; Q quits. See [setup, credentials, and training](docs/setup.en.md).
 
-## 实现边界与后续
+## Scope and next steps
 
-仅识别 `0–9/A–Z/a–z`，没有中文、标点或连续手写端到端序列模型。分割、排版和纠错依赖启发式，可能切错、合错或误改专名。
+The local vocabulary is `0–9/A–Z/a–z`, without Chinese, punctuation, or an end-to-end cursive sequence model. Segmentation, layout, and correction are heuristics that can split, merge, or rewrite text incorrectly.
 
-训练90%/验证10%使用固定种子42和不重叠索引，验证视图独立且不使用随机增强；训练和DataLoader工作进程设置种子。已有历史曲线没有重新生成，修复不代表准确率已提升。 2026-10-23修复：缺失或不兼容权重立即报错，不使用随机模型继续识别；桌面入口给出初始化错误。7项新增可靠性测试、原3项分割断言和7组纠错用例通过，没有重新训练、相机评测或云请求。后续需要独立真实照片评测与数据版本记录。
+Training/validation use disjoint 90/10 indices with seed 42 and separate dataset views; validation has no stochastic augmentation. Training and DataLoader workers are seeded. Historical curves were not regenerated, and these fixes do not establish an accuracy improvement. 2026-10-23 fixes: missing or incompatible checkpoints abort initialization, with a desktop error dialog, instead of random-model inference. Seven new reliability tests plus the existing three segmentation assertions and seven correction cases passed. No retraining, camera evaluation, or cloud request was performed. Real-photo evaluation and dataset versioning remain future work.
 
-## 归属与许可
+## Attribution and license
 
-仓库由 **刘超然 / Chaoran Liu** 维护。源码展示 CNN、图像处理、解码和界面的整合；个人与团队的细分贡献尚无独立记录，不据此扩张为全部原创算法。
+Maintained by **Chaoran Liu / 刘超然**. Source demonstrates CNN, vision, decoding, and GUI integration; individual/team ownership is not independently documented at module level, and established algorithms are not presented as wholly original research.
 
-应用代码见 [MIT 许可证](LICENSE)；PyTorch、torchvision、OpenCV、EMNIST 数据及百度服务分别遵循各自条件。[技术说明](docs/technical-notes.zh-CN.md) · [部署指南](docs/setup.zh-CN.md)
+Application code uses the [MIT License](LICENSE). PyTorch, torchvision, OpenCV, EMNIST, and Baidu services retain their own terms. [Technical notes](docs/technical-notes.en.md) · [Setup](docs/setup.en.md)
